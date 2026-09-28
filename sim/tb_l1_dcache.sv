@@ -107,6 +107,13 @@ module tb_l1_dcache;
       check(rd === 32'hDEAD_BEEF, "write hit then read-back returns the written value");
     end
 
+    begin
+      logic [DATA_W-1:0] rd;
+      cpu_write(32'h0000_0020, 32'h0000_00FF, 4'b0001); // byte 0 only
+      cpu_read(32'h0000_0020, rd);
+      check(rd === 32'hDEAD_BEFF, "byte-enable write updates only the selected byte");
+    end
+
     if (errors == 0) $display("** ALL TESTS PASSED **");
     else $display("** %0d TEST(S) FAILED **", errors);
     $finish;
