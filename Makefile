@@ -9,7 +9,7 @@ VVP      ?= vvp
 
 SIM_DIR := sim
 
-TESTS := tb_reset_sync tb_l1_dcache
+TESTS := tb_reset_sync tb_l1_dcache tb_l1_icache
 
 .DEFAULT_GOAL := help
 
@@ -34,6 +34,9 @@ $(SIM_DIR)/tb_reset_sync: sim/tb_reset_sync.sv rtl/common/reset_sync.sv
 # before any file that does `import mlc_pkg::*;` at compilation-unit scope (see Task 2 report,
 # Ruling 3) - listing it first here means $^ expands with the package ahead of its importers.
 $(SIM_DIR)/tb_l1_dcache: rtl/common/mlc_pkg.sv sim/tb_l1_dcache.sv sim/l1_downstream_stub.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_dcache_ctrl.sv
+	$(IVERILOG) -g2012 -o $@ $^
+
+$(SIM_DIR)/tb_l1_icache: rtl/common/mlc_pkg.sv sim/tb_l1_icache.sv sim/l1_downstream_stub.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_icache_ctrl.sv
 	$(IVERILOG) -g2012 -o $@ $^
 
 .PHONY: clean
