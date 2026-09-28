@@ -156,6 +156,19 @@ module tb_l1_dcache;
       @(posedge clk);
     end
 
+    begin
+      logic [DATA_W-1:0] rd;
+      // L1_SETS * L1_LINE_B = 128 * 32 = 4096 = exactly one alias stride: same index, different tag.
+      cpu_read(32'h0000_0000, rd);
+      check(rd === expected_word(32'h0000_0000), "baseline: original line present before aliasing");
+      cpu_read(32'h0000_0000 + (L1_SETS * L1_LINE_B), rd);
+      check(rd === expected_word(32'h0000_0000 + (L1_SETS * L1_LINE_B)),
+            "aliasing address (same index, different tag) misses and installs correctly");
+      cpu_read(32'h0000_0000, rd);
+      check(rd === expected_word(32'h0000_0000),
+            "original line was evicted by the alias and must miss again on re-access");
+    end
+
     if (errors == 0) $display("** ALL TESTS PASSED **");
     else $display("** %0d TEST(S) FAILED **", errors);
     $finish;
