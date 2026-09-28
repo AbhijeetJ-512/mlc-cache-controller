@@ -1,5 +1,3 @@
-import mlc_pkg::*;
-
 module l1_downstream_stub #(
   parameter int FILL_LATENCY = 3
 ) (
@@ -9,30 +7,30 @@ module l1_downstream_stub #(
 
   input  logic                      req_valid,
   output logic                      req_ready,
-  input  logic [ADDR_W-1:0]         req_addr,
+  input  logic [mlc_pkg::ADDR_W-1:0]         req_addr,
   input  logic                      req_we,
-  input  logic [DATA_W-1:0]         req_wdata,
-  input  logic [BYTES_PER_WORD-1:0] req_wstrb,
+  input  logic [mlc_pkg::DATA_W-1:0]         req_wdata,
+  input  logic [mlc_pkg::BYTES_PER_WORD-1:0] req_wstrb,
 
   output logic                      resp_valid,
   input  logic                      resp_ready,
-  output logic [L1_LINE_W-1:0]      resp_line
+  output logic [mlc_pkg::L1_LINE_W-1:0]      resp_line
 );
 
   // Deterministic "memory": word w of the line at `addr` is (line_base_addr + w).
-  function automatic logic [L1_LINE_W-1:0] line_pattern(input logic [ADDR_W-1:0] addr);
-    logic [ADDR_W-1:0] line_base;
+  function automatic logic [mlc_pkg::L1_LINE_W-1:0] line_pattern(input logic [mlc_pkg::ADDR_W-1:0] addr);
+    logic [mlc_pkg::ADDR_W-1:0] line_base;
     line_pattern = '0;
-    line_base = addr & ~(L1_LINE_B - 1);
-    for (int w = 0; w < L1_WORDS_PER_LINE; w++) begin
-      line_pattern[w*DATA_W +: DATA_W] = line_base + w;
+    line_base = addr & ~(mlc_pkg::L1_LINE_B - 1);
+    for (int w = 0; w < mlc_pkg::L1_WORDS_PER_LINE; w++) begin
+      line_pattern[w*mlc_pkg::DATA_W +: mlc_pkg::DATA_W] = line_base + w;
     end
   endfunction
 
   typedef enum logic [1:0] {S_READY, S_BUSY, S_RESP} state_e;
   state_e state;
   int latency_cnt;
-  logic [ADDR_W-1:0] latched_addr;
+  logic [mlc_pkg::ADDR_W-1:0] latched_addr;
 
   assign req_ready  = (state == S_READY) && !hold_not_ready;
   assign resp_valid = (state == S_RESP);

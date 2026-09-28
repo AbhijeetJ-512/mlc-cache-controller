@@ -1,5 +1,4 @@
 `timescale 1ns/1ps
-import mlc_pkg::*;
 
 module tb_l1_icache;
 
@@ -8,14 +7,14 @@ module tb_l1_icache;
   logic rst_n;
 
   logic              req_valid, req_ready, resp_valid, resp_ready;
-  logic [ADDR_W-1:0] req_addr;
-  logic [DATA_W-1:0] resp_rdata;
+  logic [mlc_pkg::ADDR_W-1:0] req_addr;
+  logic [mlc_pkg::DATA_W-1:0] resp_rdata;
 
   logic                      dn_req_valid, dn_req_ready, dn_req_we, dn_resp_valid, dn_resp_ready;
-  logic [ADDR_W-1:0]         dn_req_addr;
-  logic [DATA_W-1:0]         dn_req_wdata;
-  logic [BYTES_PER_WORD-1:0] dn_req_wstrb;
-  logic [L1_LINE_W-1:0]      dn_resp_line;
+  logic [mlc_pkg::ADDR_W-1:0]         dn_req_addr;
+  logic [mlc_pkg::DATA_W-1:0]         dn_req_wdata;
+  logic [mlc_pkg::BYTES_PER_WORD-1:0] dn_req_wstrb;
+  logic [mlc_pkg::L1_LINE_W-1:0]      dn_resp_line;
   logic                      hold_not_ready = 1'b0;
 
   int errors = 0;
@@ -31,15 +30,15 @@ module tb_l1_icache;
     .resp_line(dn_resp_line)
   );
 
-  function automatic logic [DATA_W-1:0] expected_word(input logic [ADDR_W-1:0] addr);
-    logic [ADDR_W-1:0] line_base;
+  function automatic logic [mlc_pkg::DATA_W-1:0] expected_word(input logic [mlc_pkg::ADDR_W-1:0] addr);
+    logic [mlc_pkg::ADDR_W-1:0] line_base;
     int word_idx;
-    line_base = addr & ~(L1_LINE_B - 1);
+    line_base = addr & ~(mlc_pkg::L1_LINE_B - 1);
     word_idx  = (addr - line_base) >> 2;
     expected_word = line_base + word_idx;
   endfunction
 
-  task automatic cpu_read(input logic [ADDR_W-1:0] addr, output logic [DATA_W-1:0] rdata);
+  task automatic cpu_read(input logic [mlc_pkg::ADDR_W-1:0] addr, output logic [mlc_pkg::DATA_W-1:0] rdata);
     @(posedge clk);
     req_valid  <= 1'b1; req_addr <= addr; resp_ready <= 1'b1;
     wait (req_ready);
@@ -68,7 +67,7 @@ module tb_l1_icache;
     check(req_ready === 1'b1, "req_ready is high after reset");
 
     begin
-      logic [DATA_W-1:0] rd;
+      logic [mlc_pkg::DATA_W-1:0] rd;
       cpu_read(32'h0000_0000, rd);
       check(rd === expected_word(32'h0000_0000), "cold-miss instruction fetch returns fetched data");
       cpu_read(32'h0000_0000, rd);
@@ -76,7 +75,7 @@ module tb_l1_icache;
     end
 
     begin
-      logic [DATA_W-1:0] rd0, rd1;
+      logic [mlc_pkg::DATA_W-1:0] rd0, rd1;
       // 0x20 and 0x40 land in distinct sets (index 1 and 2) - see the address-planning note in
       // Task 2 Step 8 for why addresses that are multiples of 0x1000 must not be used here.
       cpu_read(32'h0000_0020, rd0);
