@@ -114,6 +114,26 @@ module tb_l1_dcache;
       check(rd === 32'hDEAD_BEFF, "byte-enable write updates only the selected byte");
     end
 
+    begin
+      logic [DATA_W-1:0] rd;
+      logic saw_write_fwd;
+      saw_write_fwd = 1'b0;
+      fork
+        begin
+          cpu_write(32'h0000_0040, 32'hCAFE_F00D, 4'b1111);
+          cpu_read(32'h0000_0040, rd);
+          check(rd === 32'hCAFE_F00D, "write miss installs the line locally with the write applied");
+        end
+        begin: wait_write_fwd
+          repeat (20) begin
+            @(posedge clk);
+            if (dn_req_valid && dn_req_we && dn_req_addr === 32'h0000_0040) saw_write_fwd = 1'b1;
+          end
+        end
+      join
+      check(saw_write_fwd, "write-miss eventually forwards the write downstream too");
+    end
+
     if (errors == 0) $display("** ALL TESTS PASSED **");
     else $display("** %0d TEST(S) FAILED **", errors);
     $finish;
