@@ -169,6 +169,14 @@ module tb_l1_dcache;
             "original line was evicted by the alias and must miss again on re-access");
     end
 
+    begin
+      logic [DATA_W-1:0] rd0, rd1;
+      cpu_read(32'h0000_0080, rd0);
+      cpu_read(32'h0000_00A0, rd1);
+      check(rd0 === expected_word(32'h0000_0080) && rd1 === expected_word(32'h0000_00A0),
+            "back-to-back misses to different sets both resolve correctly");
+    end
+
     if (errors == 0) $display("** ALL TESTS PASSED **");
     else $display("** %0d TEST(S) FAILED **", errors);
     $finish;
