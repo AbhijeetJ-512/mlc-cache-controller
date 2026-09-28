@@ -90,6 +90,23 @@ module tb_l1_dcache;
       check(rd === expected_word(32'h0000_0000), "cold-miss read returns the fetched data");
     end
 
+    begin
+      logic [DATA_W-1:0] rd;
+      cpu_read(32'h0000_0000, rd);
+      check(rd === expected_word(32'h0000_0000), "repeated hit on address 0 returns the same data");
+    end
+
+    begin
+      logic [DATA_W-1:0] rd;
+      cpu_read(32'h0000_0020, rd); // install this line first (cold miss) so the next write is a HIT
+      check(rd === expected_word(32'h0000_0020), "address 0x20 installed via cold miss");
+      cpu_write(32'h0000_0020, 32'hDEAD_BEEF, 4'b1111);
+      check(dut.u_core.wr_fwd_pending === 1'b0,
+            "write-forward skid register never occupied when L2 is always ready");
+      cpu_read(32'h0000_0020, rd);
+      check(rd === 32'hDEAD_BEEF, "write hit then read-back returns the written value");
+    end
+
     if (errors == 0) $display("** ALL TESTS PASSED **");
     else $display("** %0d TEST(S) FAILED **", errors);
     $finish;
