@@ -134,6 +134,28 @@ module tb_l1_dcache;
       check(saw_write_fwd, "write-miss eventually forwards the write downstream too");
     end
 
+    begin
+      logic [DATA_W-1:0] rd;
+      cpu_read(32'h0000_0060, rd);
+      check(rd === expected_word(32'h0000_0060), "address 0x60 installed via cold miss");
+
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b0; req_addr <= 32'h0000_0060; resp_ready <= 1'b0;
+      repeat (4) begin
+        @(posedge clk);
+        check(req_ready === 1'b0,
+              "req_ready drops on a would-be hit while resp_ready is low (response not lost)");
+      end
+      resp_ready <= 1'b1;
+      @(posedge clk);
+      wait (resp_valid);
+      rd = resp_rdata;
+      check(rd === expected_word(32'h0000_0060),
+            "delayed resp_ready still yields the correct hit data once accepted");
+      req_valid <= 1'b0;
+      @(posedge clk);
+    end
+
     if (errors == 0) $display("** ALL TESTS PASSED **");
     else $display("** %0d TEST(S) FAILED **", errors);
     $finish;
