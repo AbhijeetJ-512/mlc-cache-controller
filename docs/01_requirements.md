@@ -189,32 +189,40 @@ Full derivation and the address-field diagrams are in `02_architecture.md` §2. 
 
 ## 8. Verification Requirements
 
-**Two-tier strategy, fixed after spec review (D-013).** Icarus Verilog 12 — the only simulator
+**Two-tier strategy, split by test level (D-013).** Icarus Verilog 12 — the only simulator
 installed on this machine — supports no SystemVerilog classes, so it cannot run UVM; no other
-simulator is installed. The user will run the UVM tier on an external simulator they supply. Full
-plan to be detailed in a future `05_verification_plan.md` when Phase 5 opens; binding
-requirements fixed now because they constrain how RTL is written from Phase 1 onward:
+simulator is installed. The two tiers are not just two tools for the same job — they cover
+**different levels of the design**: Tier 1 verifies each controller **standalone**; Tier 2 (UVM,
+external) is the **only** verification of the **integrated full hierarchy**. There is no
+plain-Verilog top-level/integration testbench — that level is UVM's job alone. Full plan to be
+detailed in a future `05_verification_plan.md` when Phase 5 opens; binding requirements fixed now
+because they constrain how RTL is written from Phase 1 onward:
 
-### 8.1 Tier 1 — Smoke tests (plain Verilog, runs on Icarus, in this repo)
+### 8.1 Tier 1 — Module-level smoke tests (plain Verilog, runs on Icarus, in this repo)
+
+Scope: **standalone controllers only** — L1-I, L1-D, L2, L3, the line-size adapter, and the PLRU
+tree, each verified in isolation. Explicitly **not** in scope here: the integrated
+`mlc_cache_top` — see 8.2.
 
 | ID | Tier | Requirement |
 |---|---|---|
-| VR-01 | M | A class-free, plain-Verilog directed testbench per controller (`tb/smoke/`) shall run on Icarus Verilog 12 with no external dependency, giving this repository at least one form of verification that is always locally runnable and checked in as a passing log. |
-| VR-02 | M | The smoke tier shall directly check RTL output against expected values computed in the testbench itself (simple `if`/`$display`/`$fatal` checks) — no scoreboard framework, no classes. |
-| VR-03 | M | The smoke tier shall cover, at minimum, one instance each of: reset, cold miss, repeated hit, one dirty-victim eviction, one clean-victim eviction, per controller class (L1, L2, L3). It is a sanity net, not the primary coverage vehicle — VR-04 below carries that role. |
-| VR-04 | S | The smoke tier's pass/fail result shall be produced by actually running it on this machine (`make sim`) and the log checked in — never asserted. |
+| VR-01 | M | A class-free, plain-Verilog directed testbench per standalone controller (`sim/`) shall run on Icarus Verilog 12 with no external dependency, giving this repository locally-runnable, checked-in verification of every individual module. |
+| VR-02 | M | The module-level tier shall directly check RTL output against expected values computed in the testbench itself (simple `if`/`$display`/`$fatal` checks) — no scoreboard framework, no classes. |
+| VR-03 | M | The module-level tier shall cover, at minimum, one instance each of: reset, cold miss, repeated hit, one dirty-victim eviction, one clean-victim eviction, per controller class (L1, L2, L3), plus the PLRU exhaustive check (`03_microarchitecture.md` §2.1) and the adapter split/merge check. |
+| VR-04 | M | The module-level tier's pass/fail result shall be produced by actually running it on this machine (`make sim`) and the log checked in — never asserted. |
 
-### 8.2 Tier 2 — UVM environment (SystemVerilog classes, external simulator)
+### 8.2 Tier 2 — UVM environment (SystemVerilog classes, external simulator) — the only verifier of the integrated hierarchy
 
 | ID | Tier | Requirement |
 |---|---|---|
 | VR-05 | M | The UVM environment shall follow the transaction / sequence / sequencer / driver / monitor / agent / scoreboard / env / test / config layering, one file per component, matching the structure already used by this portfolio's `APB_Design_and_Verification` project. |
 | VR-06 | M | A `uvm_sequence_item` transaction shall model one CPU-side request (address, we, wdata, wstrb) with `rand` fields and `constraint` blocks enforcing legal ranges (address alignment where applicable, legal `wstrb` encodings). A second transaction type shall model one AXI4 beat on the memory-side agent. |
-| VR-07 | M | Sequences shall include at minimum: cold-miss, repeated-hit, conflict-miss-thrash (directed, per level), dirty-eviction, clean-eviction, a bounded-length PLRU-exhaustive sequence, and a constrained-random mixed-traffic sequence for maximum-coverage regression. |
-| VR-08 | M | A UVM scoreboard shall check every RTL response against a SystemVerilog reference/predictor model of cache state (which lines are present, dirty, and which way PLRU would select) — the same functional model the Tier-1 smoke tests check against informally, now expressed as a proper predictor class. No test shall pass on waveform inspection alone. |
-| VR-09 | M | Functional coverage (`covergroup`/`coverpoint`) shall be defined for: hit/miss per level, eviction dirty vs. clean, PLRU way selected (each way, each tree depth), CPU-side backpressure patterns, AXI4 backpressure patterns. Coverage closure criteria shall be defined before this tier is considered closed. |
-| VR-10 | M | Because this tier requires SystemVerilog class support this machine's installed simulator lacks, **its regression cannot be executed inside this repository's own tooling**. The Makefile shall expose a `make uvm SIMULATOR=<tool>` target documenting the exact external invocation. Per the project's `NOT YET MEASURED`/`NOT YET RUN` policy (DR-03), no pass/fail result, coverage percentage, or "verified" claim for this tier shall appear in any document until the user has actually run it externally and the log is checked into this repository. |
-| VR-11 | N | Best-effort formal proofs (PLRU-tree invariant, FSM reachability, AXI4 protocol properties) attempted in Phase 6, contingent on installing Verilator/SymbiYosys, which are not present on this machine today. Any property not attempted or not proved shall be documented as such, never reported as proved. |
+| VR-07 | M | The UVM testbench's DUT shall be the fully integrated `mlc_cache_top` (all of L1-I, L1-D, L2, L3, the adapter, and the AXI4 fill engine wired together) — this is the requirement that makes this tier the sole functional verifier of the integrated hierarchy, not merely a supplementary deep-testing pass over what Tier 1 already covers. |
+| VR-08 | M | Sequences shall include at minimum: cold-miss propagation through however many levels actually miss, repeated-hit, conflict-miss-thrash (per level), dirty-eviction and clean-eviction write-back chains across levels, mixed I$/D$ traffic, a bounded-length PLRU-exhaustive sequence, and a constrained-random mixed-traffic sequence for maximum-coverage regression. |
+| VR-09 | M | A UVM scoreboard shall check every RTL response against a SystemVerilog reference/predictor model of the full hierarchy's cache state (which lines are present at which level, dirty status, PLRU way selection per set). No test shall pass on waveform inspection alone. |
+| VR-10 | M | Functional coverage (`covergroup`/`coverpoint`) shall be defined for: hit/miss per level, eviction dirty vs. clean, PLRU way selected (each way, each tree depth), CPU-side backpressure patterns, AXI4 backpressure patterns. Coverage closure criteria shall be defined before this tier is considered closed. |
+| VR-11 | M | Because this tier requires SystemVerilog class support this machine's installed simulator lacks, **its regression cannot be executed inside this repository's own tooling**. The Makefile shall expose a `make uvm SIMULATOR=<tool>` target documenting the exact external invocation. Per the project's `NOT YET MEASURED`/`NOT YET RUN` policy (DR-03), no pass/fail result, coverage percentage, or "verified" claim for this tier — including for the integrated hierarchy overall — shall appear in any document until the user has actually run it externally and the log is checked into this repository. |
+| VR-12 | N | Best-effort formal proofs (PLRU-tree invariant, FSM reachability, AXI4 protocol properties) attempted in Phase 6, contingent on installing Verilator/SymbiYosys, which are not present on this machine today. Any property not attempted or not proved shall be documented as such, never reported as proved. |
 
 ---
 
@@ -293,8 +301,8 @@ liberty file already used for synthesis/STA.
 
 | Tier | Count | Blocking for |
 |---|---|---|
-| MUST | 76 | RTL sign-off |
-| SHOULD | 10 | Final release |
+| MUST | 78 | RTL sign-off |
+| SHOULD | 9 | Final release |
 | NICE | 4 | Neither |
 
 ---

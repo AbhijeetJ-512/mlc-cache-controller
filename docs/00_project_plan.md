@@ -25,18 +25,16 @@ mlc_cache_controller/
 │   ├── mem_if/          axi4_fill_engine.sv        AXI4 burst master (L3 <-> memory)
 │   └── common/          mlc_pkg.sv, reset_sync.sv
 │
-├── sim/                          Tier 1 — smoke tests: plain Verilog, class-free, Icarus-runnable
+├── sim/                          Tier 1 — MODULE-LEVEL ONLY: plain Verilog, class-free, Icarus-runnable
 │   ├── tb_l1_icache.v, tb_l1_dcache.v
 │   ├── tb_l2.v, tb_plru.v
-│   ├── tb_l3.v, tb_adapter.v
-│   ├── tb_top.v                  + a small behavioral AXI4 memory model (plain Verilog)
-│   └── waveform*.vcd             generated (gitignored except one representative capture)
+│   └── tb_l3.v, tb_adapter.v      (no tb_top.v — the integrated hierarchy is UVM-only, see below)
 │
-├── tb_uvm/                       Tier 2 — UVM environment: SystemVerilog classes, EXTERNAL simulator
+├── tb_uvm/                       Tier 2 — FULL-HIERARCHY ONLY: UVM/SystemVerilog classes, EXTERNAL simulator
 │   ├── transaction.sv, sequence.sv, sequencer.sv
 │   ├── driver.sv, monitor.sv, agent.sv
 │   ├── scoreboard.sv, env.sv, config.sv, test.sv
-│   ├── tb_top_uvm.sv
+│   ├── tb_top_uvm.sv              DUT = the fully integrated mlc_cache_top (D-013 pass 2)
 │   └── README.md                 exact `make uvm SIMULATOR=<tool>` invocation (D-013)
 │
 ├── assertions/          SVA property files (Verilator/formal only — not runnable on Icarus)
@@ -74,12 +72,13 @@ mlc_cache_controller/
 2. **Every tool that produces numbers has a script and a checked-in report/results location**, so
    every figure in a document is traceable to a file, never asserted (`no-unverified-numbers`
    policy — `01_requirements.md` §12).
-3. **Verification is split into exactly the two tiers this machine's toolchain forces (D-013),
-   and each tier's directory says so by its name.** `sim/` is plain Verilog because that is what
-   Icarus 12 can actually execute (no classes) — matching `Full-Adder`'s own `sim/` convention
-   exactly. `tb_uvm/` is real SystemVerilog UVM, deliberately kept in its own top-level directory
-   (not nested under `sim/`) specifically *because* it cannot be run by this repository's own
-   tooling — the separation is a statement of fact about execution capability, not a style choice.
+3. **Verification is split by test level, not just by tool (D-013).** `sim/` holds only
+   standalone, module-level testbenches (one per controller) — plain Verilog, because that is what
+   Icarus 12 can actually execute (no classes), matching `Full-Adder`'s own `sim/` convention.
+   `tb_uvm/` holds the full-hierarchy verification exclusively — there is no `tb_top.v`; the
+   integrated `mlc_cache_top` is verified by the UVM environment alone, on an external simulator.
+   This is a statement about which level of the design each tier is responsible for, not just
+   about which tool each tier happens to use.
 4. **The synthesis/STA/PnR flow is unified into `scripts/`+`build/`+`pnr_results/`, matching
    `Full-Adder`**, rather than the earlier `synthesis/`+`sta/` split — this project now runs the
    same one-Makefile, one-`scripts/`-directory flow shape already proven in that project.
@@ -143,26 +142,26 @@ complete, and documented," never to a pass/fail this session cannot produce (D-0
 
 ---
 
-### PHASE 4 — Full Hierarchy Integration
+### PHASE 4 — Full Hierarchy Integration (structural only — no Tier-1 functional test)
 
 | | |
 |---|---|
-| **Objective** | L1-I, L1-D, L2, L3 and the AXI4 memory-side connected as one IP, with a small behavioral memory model standing in for DRAM. |
-| **Files** | `rtl/top/mlc_cache_top.sv`, `sim/tb_top.v` (includes a plain-Verilog behavioral AXI4 memory model — feasible because every transfer has the one fixed shape fixed by D-012) |
-| **Work** | Wire L1-I/L1-D each to L2; L2 to L3 through the adapter; L3 to the AXI4 fill engine; the fill engine to the behavioral memory model |
-| **Tests (Tier 1)** | A directed regression mixing I-fetch and D-access traffic, hand- and script-generated, exercising hits/misses at every level (L1-only, L1+L2, all three) and write-back chains across levels, checked in `sim/tb_top.v` |
-| **Done when** | `make sim` runs the Tier-1 integration regression with zero failures on Icarus; zero deadlocks observed under directed backpressure sequences. The **comprehensive** (>=large-N, constrained-random, maximum-coverage) regression this design ultimately needs is the Tier-2 UVM environment (Phase 5) — this phase's directed regression is a bring-up gate, not the final verification claim. |
+| **Objective** | L1-I, L1-D, L2, L3 and the AXI4 memory-side connected as one IP. This phase is wiring and elaboration only — per D-013 (pass 2), the integrated hierarchy has no standalone Icarus testbench of its own; its functional verification is entirely Phase 5's job. |
+| **Files** | `rtl/top/mlc_cache_top.sv` |
+| **Work** | Wire L1-I/L1-D each to L2; L2 to L3 through the adapter; L3 to the AXI4 fill engine |
+| **Tier-1 check (elaboration only, not functional)** | `mlc_cache_top.sv` elaborates cleanly (Icarus `-tnull`/syntax-and-port-check compile, and Yosys `read_verilog`/`hierarchy` elaboration) with zero inferred latches and no unconnected/mismatched ports. This confirms the wiring is structurally sound; it does not exercise any functional behavior. |
+| **Done when** | The integrated design elaborates cleanly by both tools above. Any functional claim about the integrated hierarchy's behavior is out of scope for this phase — see Phase 5. |
 
 ---
 
-### PHASE 5 — Verification Closure: Tier-2 UVM Environment
+### PHASE 5 — Full-Hierarchy Verification: Tier-2 UVM Environment (sole functional verifier of the integrated design)
 
 | | |
 |---|---|
-| **Objective** | Build the comprehensive, constrained-random, coverage-driven UVM environment (VR-05..VR-11), matching the structure of this portfolio's `APB_Design_and_Verification` project. |
+| **Objective** | Build the UVM environment (VR-05..VR-12) that is the **only** functional verification the integrated `mlc_cache_top` receives, per D-013 (pass 2) — not a supplementary deep pass on top of an existing Tier-1 integration test, since no such test exists. |
 | **Files** | `tb_uvm/transaction.sv`, `sequence.sv`, `sequencer.sv`, `driver.sv`, `monitor.sv`, `agent.sv`, `scoreboard.sv`, `env.sv`, `config.sv`, `test.sv`, `tb_top_uvm.sv`, `tb_uvm/README.md` |
-| **Work** | `uvm_sequence_item` transaction(s) with `rand`/`constraint` fields (VR-06); sequences for cold-miss, repeated-hit, conflict-thrash, dirty/clean eviction, bounded PLRU-exhaustive, and constrained-random mixed traffic (VR-07); a scoreboard driven by a SystemVerilog predictor model of cache state (VR-08); functional coverage groups for hit/miss, eviction dirty/clean, PLRU way selected, backpressure patterns at both interfaces (VR-09) |
-| **This repo's Definition of Done** | The environment is structurally complete (every file above exists, compiles conceptually against the standard IEEE 1800.2 UVM API, matches the `APB_Design_and_Verification` file layout), and `tb_uvm/README.md` states the exact external invocation (`make uvm SIMULATOR=<tool>`, OQ-5). **The regression's actual pass/fail result and coverage numbers are explicitly NOT part of this phase's local Definition of Done** — per D-013/VR-10, they cannot be produced without a class-capable simulator this machine does not have. They are recorded, with the log checked in, only once the user runs the environment externally. |
+| **Work** | `uvm_sequence_item` transaction(s) with `rand`/`constraint` fields (VR-06); the DUT is the fully integrated `mlc_cache_top` (VR-07); sequences for cold-miss propagation across levels, repeated-hit, conflict-thrash, dirty/clean eviction write-back chains, mixed I$/D$ traffic, bounded PLRU-exhaustive, and constrained-random mixed traffic (VR-08); a scoreboard driven by a SystemVerilog predictor model of the full hierarchy's cache state (VR-09); functional coverage groups for hit/miss, eviction dirty/clean, PLRU way selected, backpressure patterns at both interfaces (VR-10) |
+| **This repo's Definition of Done** | The environment is structurally complete (every file above exists, targets the integrated `mlc_cache_top`, matches the `APB_Design_and_Verification` file layout), and `tb_uvm/README.md` states the exact external invocation (`make uvm SIMULATOR=<tool>`, OQ-5). **The regression's actual pass/fail result and coverage numbers are explicitly NOT part of this phase's local Definition of Done** — per D-013/VR-11, they cannot be produced without a class-capable simulator this machine does not have. They are recorded, with the log checked in, only once the user runs the environment externally. Until then, the integrated hierarchy's functional correctness is formally **NOT YET RUN (external simulator required)** — Phase 4's elaboration check is not a substitute for this. |
 
 ---
 
@@ -262,9 +261,9 @@ complete, and documented," never to a pass/fail this session cannot produce (D-0
 | # | Risk | Impact | Likelihood | Mitigation |
 |---|---|---|---|---|
 | R1 | Blocking-miss decision (D-004) understates real cache performance behavior a reviewer might expect | Portfolio piece reads as "textbook" rather than "high-performance" | Medium | README states the blocking-miss scope explicitly as a deliberate v1 boundary; non-blocking/MSHR named as a future phase |
-| R2 | The Tier-2 UVM regression's pass/fail result depends entirely on the user running it on an external simulator (D-013) | The comprehensive, "maximum coverage" verification this project's owner explicitly asked for may never actually be executed and checked in | **Confirmed, active** | Tier 1 (plain-Verilog smoke, this repo) guarantees the project is never left with zero locally-verified evidence; `tb_uvm/README.md` gives the exact external command so running it is a copy-paste; every UVM figure stays labelled NOT YET RUN until it happens |
-| R3 | L2<->L3 line-size adapter (2:1 ratio) has an off-by-one or ordering bug in the beat sequencer | Silent data corruption on lines that cross the adapter | Medium | Phase 3 DoD requires an exhaustive directed test of both split and merge directions |
-| R4 | Direct-mapped L1 thrashes badly on adversarial access patterns in the integration regression, understating L2/L3 test coverage | Weak measured evidence for L2/L3 logic at Tier 1 | Medium | Phase 4 Tier-1 regression includes a directed pattern designed to force L1 conflict misses specifically to drive traffic into L2/L3 |
+| R2 | The **entire functional verification of the integrated hierarchy** depends on the user running the UVM tier on an external simulator (D-013, pass 2) — Tier 1 covers standalone modules only, with no fallback integration test | Until the user runs it, the integrated `mlc_cache_top`'s functional correctness is **completely unverified**, not just "less thoroughly verified" | **Confirmed, active — higher stakes after pass 2 than after pass 1** | `tb_uvm/README.md` gives the exact external command so running it is a copy-paste; every hierarchy-level claim stays labelled NOT YET RUN until it happens; Phase 4's elaboration-only check catches wiring/port mistakes but makes no functional claim, so it must never be mistaken for one |
+| R3 | L2<->L3 line-size adapter (2:1 ratio) has an off-by-one or ordering bug in the beat sequencer | Silent data corruption on lines that cross the adapter | Medium | Phase 3 DoD requires an exhaustive directed test of both split and merge directions at module level (Tier 1) |
+| R4 | Direct-mapped L1 thrashes badly on adversarial access patterns, and — since there is no Tier-1 integration test at all (only the external UVM tier exercises the integrated hierarchy) — this can only be caught once the UVM regression is actually run | Weak measured evidence for L2/L3 behavior under real traffic until the external run happens | Medium | The UVM sequence set (VR-08) explicitly includes a directed pattern designed to force L1 conflict misses, specifically to drive traffic into L2/L3, since Tier 1 cannot exercise this at all |
 | R5 | Yosys+ABC synthesis runtime at 8-way/512-set L3 (the largest tag/PLRU array) is slow | PPA sweep truncated | Medium | Bring the flow up on L1 (smallest) first; scale up recording runtime at each step |
 | R6 | Scope creep toward non-blocking misses or coherency mid-project | Project never reaches synthesis/STA/PnR | Medium | D-001/D-004 fix these out of v1 scope; any revisit requires a new logged decision |
 | R7 | OpenROAD P&R (Phase 9) does not close cleanly at full hierarchy size — congestion, routing runtime, or DRC violations on the largest (L3) tag/PLRU array | PnR deliverable incomplete at full size | Medium, **not yet known either way** | PD-03: attempt P&R on L1 alone first, scale up; if full-size P&R does not close, report the actual outcome (including which stage failed) rather than substituting a smaller result silently (D-014) |
@@ -275,7 +274,7 @@ complete, and documented," never to a pass/fail this session cannot produce (D-0
 
 | Tool | Status | Version | Use |
 |---|---|---|---|
-| Icarus Verilog | **installed** | 12.0 | Tier-1 smoke-test simulator |
+| Icarus Verilog | **installed** | 12.0 | Tier-1 module-level smoke-test simulator (standalone controllers only) |
 | Yosys | **installed** | 0.33 | Synthesis |
 | OpenSTA | **installed** | 2.7.0 | Timing analysis |
 | OpenROAD | **installed, verified runnable** | v2.0-25346-gc62be3f952 (`/usr/local/bin/openroad`) | Place and route (Phase 9, D-014) |
@@ -291,10 +290,11 @@ complete, and documented," never to a pass/fail this session cannot produce (D-0
 **Notable constraint, verified directly (not assumed) during spec review (D-013):** attempting to
 compile this portfolio's existing `APB_Design_and_Verification` UVM testbench on this machine
 fails immediately (`Include file uvm_macros.svh not found`) — no UVM library is installed, and
-Icarus 12 has no SystemVerilog class support regardless. This is why verification is split into
-two tiers rather than being UVM-only: Tier 1 (plain Verilog, this repo, Icarus) always runs here;
-Tier 2 (UVM, `tb_uvm/`) is written to the full standard but requires the user's external
-simulator to actually execute.
+Icarus 12 has no SystemVerilog class support regardless. Verification is therefore split by test
+**level**, not just by tool: Tier 1 (plain Verilog, this repo, Icarus) covers each controller
+**standalone** and always runs here; Tier 2 (UVM, `tb_uvm/`) is the **sole** verifier of the
+**integrated full hierarchy** and requires the user's external simulator to actually execute —
+there is no local fallback for hierarchy-level behavior.
 
 ---
 

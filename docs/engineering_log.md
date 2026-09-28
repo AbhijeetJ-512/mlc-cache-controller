@@ -23,9 +23,9 @@ requester shares the hierarchy, which determines whether a coherency protocol is
 **Decision.** Single-core, no coherency protocol.
 
 **Reason.** This project's toolchain constraint (`vlsi-toolchain-reality`: Icarus Verilog 12
-supports no classes, `randomize()`, covergroups, or concurrent SVA) already rules out a
-UVM-based verification environment; cocotb is the practical route regardless of scope. A
-multi-core coherency protocol adds an entire second axis of verification complexity on top of
+supports no classes, `randomize()`, covergroups, or concurrent SVA) already rules out running a
+UVM-based verification environment on this machine directly (see D-013 for how that constraint
+was ultimately resolved). A multi-core coherency protocol adds an entire second axis of verification complexity on top of
 that constraint — snoop races, invalidation ordering across independent agents, directory or
 broadcast-snoop correctness — that is realistically a separate, larger project, not a sub-scope
 of a controller project. Choosing single-core keeps the verification effort proportionate to a
@@ -370,28 +370,28 @@ noted here so a future revisit knows this decision was scope-driven, not an over
 
 ---
 
-## D-013 — Verification methodology: classic SystemVerilog UVM vs. cocotb
+## D-013 — Verification methodology: classic SystemVerilog UVM, split by test level
 
-**2026-09-28 · Phase 0 (spec revision, after initial review)**
+**2026-09-28 -> 2026-09-29 · Phase 0 (spec revision, two passes during review)**
 
-**Problem.** The initial spec (VR-01, D-000-adjacent toolchain note) fixed cocotb as the
-verification approach specifically because Icarus Verilog 12 — the only simulator installed on
-this machine — supports no SystemVerilog classes, `randomize()`, covergroups, or concurrent SVA.
-During spec review, the request changed to classic UVM, "the same as" the portfolio's existing
-`APB_Design_and_Verification` project. That project was checked directly rather than assumed to
-work: its testbench is genuine class-based UVM (`class ... extends uvm_*` in `agent.sv`,
-`driver.sv`, `env.sv`, `monitor.sv`, `scoreboard.sv`, `sequence.sv`, `test.sv`, `transaction.sv`,
-`config.sv`), and attempting to compile it here fails immediately —
+**Problem.** The initial spec (VR-01) fixed a Python-driven co-simulation approach as the
+verification method throughout, specifically because Icarus Verilog 12 — the only simulator
+installed on this machine — supports no SystemVerilog classes, `randomize()`, covergroups, or
+concurrent SVA. During spec review, the request changed to classic UVM, "the same as" the
+portfolio's existing `APB_Design_and_Verification` project. That project was checked directly
+rather than assumed to work: its testbench is genuine class-based UVM (`class ... extends
+uvm_*` in `agent.sv`, `driver.sv`, `env.sv`, `monitor.sv`, `scoreboard.sv`, `sequence.sv`,
+`test.sv`, `transaction.sv`, `config.sv`), and attempting to compile it here fails immediately —
 `testbench.sv:4: Include file uvm_macros.svh not found` — because no UVM library is installed
 and no class-capable simulator exists on this machine (`which vcs questa xrun irun verilator` all
 returned nothing). This is the same "claimed UVM, nothing ever actually ran" failure mode already
 on record for `axi_aes_engine` (see `no-unverified-numbers` memory).
 
-**Options considered.**
+**Options considered (pass 1 — UVM at all, given the compile failure).**
 
-1. *pyuvm on cocotb+Icarus* — a Python re-implementation of the UVM base classes (agents,
-   drivers, monitors, scoreboards, sequences, the factory, phases) that actually executes on the
-   installed toolchain.
+1. *A Python re-implementation of the UVM base classes* (agents, drivers, monitors,
+   scoreboards, sequences, the factory, phases) running via a Python-driven co-simulation
+   framework that actually executes on the installed toolchain, without SystemVerilog classes.
 2. *Install Verilator and attempt real SV UVM* — Verilator 5.x has partial, still-experimental
    class support; a real gamble that could reproduce the same "doesn't actually run" outcome
    after real time investment.
@@ -399,7 +399,7 @@ on record for `axi_aes_engine` (see `no-unverified-numbers` memory).
    supplies outside this machine/session* (matching `APB_Design_and_Verification`'s exact
    structure: transaction/sequence/sequencer/driver/monitor/agent/scoreboard/env/test/config,
    one file per component).
-4. *Keep the already-approved cocotb plan, no UVM structuring.*
+4. *Keep the already-approved Python-co-simulation plan, no UVM structuring.*
 
 Presented to the user as an explicit choice (with the compile-failure evidence above shown
 directly), since this is a decision only they could make — proceeding with Option 1 or 4
@@ -407,29 +407,52 @@ unilaterally would have quietly overridden an explicit request; proceeding with 
 without surfacing the compile failure would have repeated the exact unverifiable-claim failure
 mode this project's `no-unverified-numbers` policy exists to prevent.
 
-**Decision.** Option 3 — classic SystemVerilog UVM, written to the same structural pattern as
-`APB_Design_and_Verification`, targeting an external simulator the user runs outside this
-machine/session.
+**Decision (pass 1).** Option 3 — classic SystemVerilog UVM, written to the same structural
+pattern as `APB_Design_and_Verification`, targeting an external simulator the user runs outside
+this machine/session.
 
-**Reason.** The user's own answer: run synthesis with the system's Yosys (which this machine can
-execute end-to-end and verify), and run the UVM verification "with an external simulator" they
-have separate access to. This is the one option that gives genuine, full SystemVerilog UVM (not
-an approximation) while being honest about what this machine and session can and cannot execute.
+**Options considered (pass 2 — where the line between the two tiers sits).** The first pass left
+a plain-Verilog smoke test *also* covering the full integrated hierarchy (`sim/tb_top.v`), in
+addition to the UVM tier, on the reasoning that the repo should never be left with zero
+locally-runnable verification. Follow-up feedback fixed the boundary explicitly instead of
+leaving it to that reasoning: Icarus-based directed testing is for **standalone, module-level**
+verification only (each controller in isolation); the **full hierarchy** is verified by UVM only,
+not by a duplicate plain-Verilog top-level testbench.
 
-**Tradeoffs — the significant one.** The UVM regression's pass/fail result **cannot be produced
-or checked in by this session**, because the tool that would run it is not here. This is
-mitigated three ways, each now binding (see `01_requirements.md` VR-07/VR-08):
-(a) a second, lightweight **smoke tier** — plain-Verilog, class-free, directed testbenches that
-**do** run on Icarus in this repo, covering the same core scenarios, so the repo is never left
-with zero locally-runnable verification; (b) the exact reproduction command for the UVM tier is
-documented so the external run is a copy-paste, not a guess; (c) per `no-unverified-numbers`,
-no UVM pass/fail/coverage figure will be asserted in any document until the user actually runs it
-externally and the log is checked in — until then, every such figure is labelled
+**Decision (pass 2).** Tier 1 (plain Verilog, Icarus, this repo) is scoped to standalone
+module-level testing only — L1-I, L1-D, L2, L3, the adapter, and the PLRU tree, each in
+isolation. There is no Tier-1 testbench for the integrated `mlc_cache_top`. Full-hierarchy
+verification is the UVM environment's job alone.
+
+**Reason.** Module-level correctness (does this one controller's FSM/array/PLRU behave right in
+isolation) is exactly the kind of small-state-space, easily-directed check Icarus can do well and
+that this session can actually execute and check in — there is no good reason to defer it to an
+external tool. Full-hierarchy behavior (miss propagation across levels, write-back chains,
+mixed-traffic interaction) is where the constrained-random, coverage-driven depth the UVM tier
+exists for actually matters, and maintaining a second, separate directed top-level testbench in
+parallel with the UVM environment would just be duplicated test-writing effort for the same
+target with no distinct verification purpose of its own.
+
+**Tradeoffs — the significant one, unchanged from pass 1.** The UVM regression's pass/fail result
+**cannot be produced or checked in by this session**, because the tool that would run it is not
+here. This is mitigated: (a) the module-level Tier-1 tests give this repo genuine, checked-in,
+passing local verification of every individual controller, so the project is never left with zero
+executable evidence, even though the *integrated* behavior is untested locally; (b) the exact
+reproduction command for the UVM tier is documented so the external run is a copy-paste, not a
+guess; (c) per `no-unverified-numbers`, no UVM pass/fail/coverage figure — including for the
+integrated hierarchy — will be asserted in any document until the user actually runs it externally
+and the log is checked in; until then every such figure is labelled
 **NOT YET RUN (external simulator required)**, distinct from **NOT YET MEASURED** (which means
 "the tool to produce this hasn't been run yet, but could be, on this machine").
 
-**Result.** `01_requirements.md` §8 rewritten for the two-tier strategy; `00_project_plan.md`
-repository structure and Phase 5/6 updated; `README.md` toolchain section updated.
+**Result.** `01_requirements.md` §8 rewritten for the two-tier strategy, scoped by test level;
+`00_project_plan.md` repository structure and Phase 4/5 updated (Phase 4 is now integration-only,
+no functional Tier-1 test of its own; Phase 5's UVM environment is the sole functional
+verification of the integrated hierarchy); `README.md` toolchain and verification sections
+updated. Every remaining textual reference to the specific Python co-simulation tool name from
+the original VR-01 has been removed from the documentation set, per explicit request — the
+Tier-1 module-level testbenches are plain Verilog only, with no Python-driven layer in the
+current plan.
 
 ---
 

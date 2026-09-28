@@ -44,8 +44,9 @@ reasoning and the accepted tradeoff recorded in
    either — verified directly by trying to compile this portfolio's own `APB_Design_and_Verification`
    project and getting `uvm_macros.svh not found`. Rather than either silently downgrading to a
    non-UVM approach or shipping a UVM testbench nobody here can run (the failure mode already on
-   record for this portfolio's `axi_aes_engine`), this project keeps a locally-runnable plain-Verilog
-   smoke tier *and* writes the full UVM environment for external execution — see D-013.
+   record for this portfolio's `axi_aes_engine`), this project splits verification **by test
+   level**: standalone controllers are checked locally on Icarus; the integrated hierarchy is
+   verified exclusively by the UVM environment, externally — see D-013.
 
 ## Documentation
 
@@ -58,19 +59,22 @@ reasoning and the accepted tradeoff recorded in
 | [`docs/04_interfaces.md`](docs/04_interfaces.md) | Signal-level CPU-side, inter-level, and AXI4 memory-side interface specification |
 | [`docs/engineering_log.md`](docs/engineering_log.md) | Every architectural decision: options considered, decision, reason, and the tradeoff accepted — D-001 through D-014 |
 
-## Verification: two tiers, deliberately
+## Verification: split by test level, not just by tool
 
-- **Tier 1 — smoke tests** (`sim/`): plain, class-free Verilog, directed, runs on Icarus in this
-  repository via `make sim`. Guarantees the project always has at least one locally-runnable,
-  actually-passing form of verification checked in.
+- **Tier 1 — module-level smoke tests** (`sim/`): plain, class-free Verilog, directed, one
+  testbench per **standalone** controller (L1-I, L1-D, L2, L3, the adapter, the PLRU tree). Runs
+  on Icarus in this repository via `make sim`. Covers module-level correctness only — there is no
+  Tier-1 test of the integrated design.
 - **Tier 2 — UVM environment** (`tb_uvm/`): a full IEEE 1800.2 UVM environment (transaction,
   sequence, sequencer, driver, monitor, agent, scoreboard, env, test, config — matching this
-  portfolio's `APB_Design_and_Verification` structure), with constrained-random sequences and
-  functional coverage for maximum coverage. **This tier requires an external, class-capable
-  simulator** (VCS/Questa/Xcelium) that is not installed on this machine — attempting to compile
-  `APB_Design_and_Verification` here fails immediately with `uvm_macros.svh not found`, and
-  Icarus 12 has no SystemVerilog class support regardless. `tb_uvm/README.md` gives the exact
-  external invocation. Its pass/fail result and coverage numbers are labelled
+  portfolio's `APB_Design_and_Verification` structure) whose DUT is the **fully integrated**
+  `mlc_cache_top`, with constrained-random sequences and functional coverage for maximum
+  coverage. This is the **only** functional verification the integrated hierarchy receives.
+  **This tier requires an external, class-capable simulator** (VCS/Questa/Xcelium) that is not
+  installed on this machine — attempting to compile `APB_Design_and_Verification` here fails
+  immediately with `uvm_macros.svh not found`, and Icarus 12 has no SystemVerilog class support
+  regardless. `tb_uvm/README.md` gives the exact external invocation. Its pass/fail result and
+  coverage numbers — including for the integrated hierarchy overall — are labelled
   **NOT YET RUN (external simulator required)** until run externally and the log is checked in.
 
 See D-013 in `docs/engineering_log.md` for the full reasoning, including the direct evidence.
