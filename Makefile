@@ -20,10 +20,12 @@ help:
 
 .PHONY: sim
 sim: $(addprefix $(SIM_DIR)/,$(TESTS))
-	@for t in $(TESTS); do \
+	@mkdir -p $(SIM_DIR)/logs && \
+	bash -c 'set -o pipefail; \
+	for t in $(TESTS); do \
 		echo "=== $$t ==="; \
-		$(VVP) $(SIM_DIR)/$$t || exit 1; \
-	done
+		$(VVP) $(SIM_DIR)/$$t | tee $(SIM_DIR)/logs/$$t.log || exit 1; \
+	done'
 
 $(SIM_DIR)/tb_reset_sync: sim/tb_reset_sync.sv rtl/common/reset_sync.sv
 	$(IVERILOG) -g2012 -o $@ $^
@@ -32,3 +34,4 @@ $(SIM_DIR)/tb_reset_sync: sim/tb_reset_sync.sv rtl/common/reset_sync.sv
 clean:
 	@rm -f $(addprefix $(SIM_DIR)/,$(TESTS))
 	@rm -f $(SIM_DIR)/*.vcd
+	@rm -f $(SIM_DIR)/logs/*.log

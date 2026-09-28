@@ -1,0 +1,6 @@
+# Simulation binaries (compiled test executables)
+sim/tb_*
+sim/*.vcd
+
+# VCD waveform dumps (not logs)
+*.vcd

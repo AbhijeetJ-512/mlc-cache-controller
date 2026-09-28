@@ -1,0 +1,6 @@
+PASS: rst_n is low while async_rst_n is held low
+PASS: rst_n still low 1 cycle after async_rst_n deasserts (sync stage 1)
+PASS: rst_n high 2 cycles after async_rst_n deasserts (sync stage 2)
+PASS: rst_n drops immediately (asynchronously) on re-assertion
+** ALL TESTS PASSED **
+sim/tb_reset_sync.sv:39: $finish called at 27000 (1ps)
