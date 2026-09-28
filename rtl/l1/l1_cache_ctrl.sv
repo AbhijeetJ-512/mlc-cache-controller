@@ -40,6 +40,11 @@ module l1_cache_ctrl (
   logic is_hit;
   assign is_hit = valid_array[req_index] && (tag_array[req_index] == req_tag);
 
+  logic [mlc_pkg::L1_LINE_W-1:0] req_line_rd;
+  logic [mlc_pkg::L1_LINE_W-1:0] miss_line_rd;
+  assign req_line_rd  = data_array[req_index];
+  assign miss_line_rd = data_array[miss_index];
+
   logic [mlc_pkg::ADDR_W-1:0]        miss_addr;
   logic [mlc_pkg::L1_INDEX_W-1:0]    miss_index;
   logic [mlc_pkg::L1_TAG_W-1:0]      miss_tag;
@@ -73,14 +78,21 @@ module l1_cache_ctrl (
     end
   end
 
+  logic [mlc_pkg::L1_LINE_W-1:0] hit_write_line_merged;
+  always_comb begin
+    hit_write_line_merged = req_line_rd;
+    hit_write_line_merged[req_word_sel*mlc_pkg::DATA_W +: mlc_pkg::DATA_W] =
+        merge_wstrb(req_line_rd[req_word_sel*mlc_pkg::DATA_W +: mlc_pkg::DATA_W], req_wdata, req_wstrb);
+  end
+
   assign req_ready = rst_n && (state == S_IDLE) && !wr_fwd_pending &&
                       (!req_valid || !is_hit || resp_ready);
 
   assign resp_valid = (state == S_UPDATE_TAG) || (state == S_IDLE && req_valid && req_ready && is_hit);
 
   always_comb begin
-    if (state == S_UPDATE_TAG) resp_rdata = data_array[miss_index][miss_word_sel*mlc_pkg::DATA_W +: mlc_pkg::DATA_W];
-    else                       resp_rdata = data_array[req_index][req_word_sel*mlc_pkg::DATA_W +: mlc_pkg::DATA_W];
+    if (state == S_UPDATE_TAG) resp_rdata = miss_line_rd[miss_word_sel*mlc_pkg::DATA_W +: mlc_pkg::DATA_W];
+    else                       resp_rdata = req_line_rd[req_word_sel*mlc_pkg::DATA_W +: mlc_pkg::DATA_W];
   end
 
   assign dn_resp_ready = (state == S_ALLOC_FILL);
@@ -125,9 +137,7 @@ module l1_cache_ctrl (
           if (req_valid && req_ready) begin
             if (is_hit) begin
               if (req_we) begin
-                data_array[req_index][req_word_sel*mlc_pkg::DATA_W +: mlc_pkg::DATA_W] <=
-                    merge_wstrb(data_array[req_index][req_word_sel*mlc_pkg::DATA_W +: mlc_pkg::DATA_W],
-                                req_wdata, req_wstrb);
+                data_array[req_index] <= hit_write_line_merged;
               end
             end else begin
               miss_addr     <= req_addr;
