@@ -115,9 +115,35 @@ module tb_l1_dcache;
     end
 
     begin
+      // Genuine back-to-back write-hit burst (Review Focus #3): one write hit per cycle, no
+      // gaps, confirming the skid register never engages even under sustained pressure.
+      // Reuses 0x0000_0020, which is valid here (installed by the earlier fast-path scenario,
+      // most recently written by the byte-enable test above); nothing later depends on its
+      // exact stored value before the next full-cache reset (Step 28) invalidates it anyway.
+      logic all_accepted;
+      all_accepted = 1'b1;
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b1; req_addr <= 32'h0000_0020;
+      req_wdata <= 32'h0000_0001; req_wstrb <= 4'b1111; resp_ready <= 1'b1;
+      for (int i = 0; i < 4; i++) begin
+        @(posedge clk);
+        if (!req_ready) all_accepted = 1'b0;
+        check(dut.u_core.wr_fwd_pending === 1'b0,
+              "skid register stays empty through a back-to-back write-hit burst (Review Focus #3)");
+        req_addr  <= 32'h0000_0020;
+        req_wdata <= req_wdata + 1;
+      end
+      req_valid <= 1'b0;
+      @(posedge clk);
+      check(all_accepted, "every write hit in the burst was accepted with req_ready held high throughout");
+    end
+
+    begin
       logic [DATA_W-1:0] rd;
       logic saw_write_fwd;
+      logic fwd_data_correct;
       saw_write_fwd = 1'b0;
+      fwd_data_correct = 1'b0;
       fork
         begin
           cpu_write(32'h0000_0040, 32'hCAFE_F00D, 4'b1111);
@@ -127,11 +153,15 @@ module tb_l1_dcache;
         begin: wait_write_fwd
           repeat (20) begin
             @(posedge clk);
-            if (dn_req_valid && dn_req_we && dn_req_addr === 32'h0000_0040) saw_write_fwd = 1'b1;
+            if (dn_req_valid && dn_req_we && dn_req_addr === 32'h0000_0040) begin
+              saw_write_fwd = 1'b1;
+              fwd_data_correct = (dn_req_wdata === 32'hCAFE_F00D) && (dn_req_wstrb === 4'b1111);
+            end
           end
         end
       join
       check(saw_write_fwd, "write-miss eventually forwards the write downstream too");
+      check(fwd_data_correct, "the forwarded write carries the correct wdata/wstrb, not stale req_* inputs");
     end
 
     begin
@@ -145,6 +175,8 @@ module tb_l1_dcache;
         @(posedge clk);
         check(req_ready === 1'b0,
               "req_ready drops on a would-be hit while resp_ready is low (response not lost)");
+        check(resp_valid === 1'b0,
+              "resp_valid does not fire while the request has not actually been accepted (req_ready=0)");
       end
       resp_ready <= 1'b1;
       @(posedge clk);
@@ -158,15 +190,30 @@ module tb_l1_dcache;
 
     begin
       logic [DATA_W-1:0] rd;
+      logic saw_miss;
       // L1_SETS * L1_LINE_B = 128 * 32 = 4096 = exactly one alias stride: same index, different tag.
       cpu_read(32'h0000_0000, rd);
       check(rd === expected_word(32'h0000_0000), "baseline: original line present before aliasing");
       cpu_read(32'h0000_0000 + (L1_SETS * L1_LINE_B), rd);
       check(rd === expected_word(32'h0000_0000 + (L1_SETS * L1_LINE_B)),
             "aliasing address (same index, different tag) misses and installs correctly");
-      cpu_read(32'h0000_0000, rd);
+
+      saw_miss = 1'b0;
+      fork
+        begin
+          cpu_read(32'h0000_0000, rd);
+        end
+        begin
+          repeat (15) begin
+            @(posedge clk);
+            if (dut.u_core.state === dut.u_core.S_ALLOC_FILL) saw_miss = 1'b1;
+          end
+        end
+      join
       check(rd === expected_word(32'h0000_0000),
             "original line was evicted by the alias and must miss again on re-access");
+      check(saw_miss,
+            "the re-access genuinely took the miss path (S_ALLOC_FILL), not a stale hit (Review Focus #4)");
     end
 
     begin
@@ -192,7 +239,6 @@ module tb_l1_dcache;
       hold_not_ready = 1'b0;
       @(posedge clk);
       wait (req_ready);
-      check(1'b1, "req_ready returns once L2 accepts the pending forward");
       @(posedge clk);
     end
 
@@ -228,18 +274,67 @@ module tb_l1_dcache;
       req_valid <= 1'b0;
       @(posedge clk);
       check(dut.u_core.wr_fwd_pending === 1'b1, "write-forward is pending before reset");
+      // hold_not_ready stays asserted through reset AND the post-reset check below, so the
+      // normal (non-reset) drain path cannot be the reason wr_fwd_pending reads 0 afterward -
+      // isolating what CR-03/reset itself does from what draining does (Review Focus #5).
       rst_n <= 1'b0;
       repeat (2) @(posedge clk);
       rst_n <= 1'b1;
-      hold_not_ready <= 1'b0;
       @(posedge clk); #1;
       check(dut.u_core.wr_fwd_pending === 1'b0,
-            "write-forward skid register clears on reset (CR-03), not left dangling");
-      check(req_ready === 1'b1, "req_ready is high again after reset clears a pending forward");
+            "write-forward skid register clears on reset (CR-03), checked while L2 is still held not-ready so this can only be reset's own doing");
+      check(dn_req_valid === 1'b0,
+            "no downstream write request is still asserted after reset clears the pending forward");
+      hold_not_ready <= 1'b0;
+      @(posedge clk);
+      wait (req_ready);
     end
 
-    if (errors == 0) $display("** ALL TESTS PASSED **");
-    else $display("** %0d TEST(S) FAILED **", errors);
-    $finish;
+    begin
+      // Regression for the resp_valid/req_ready coupling bug found during Task 2 review:
+      // resp_valid must never fire for a hit that req_ready did not actually accept.
+      logic [DATA_W-1:0] rd;
+      cpu_read(32'h0000_00C0, rd); // W1's address (index 6) - install first so its write is a hit
+      check(rd === expected_word(32'h0000_00C0), "0xC0 installed for the resp_valid regression");
+      cpu_read(32'h0000_0020, rd); // W2's address (index 1) - install first so its write is a hit
+      check(rd === expected_word(32'h0000_0020), "0x20 re-installed for the resp_valid regression");
+
+      hold_not_ready = 1'b1;
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b1; req_addr <= 32'h0000_00C0;
+      req_wdata <= 32'hAAAA_0001; req_wstrb <= 4'b1111; resp_ready <= 1'b1;
+      wait (req_ready);
+      @(posedge clk);
+      req_valid <= 1'b0;
+      @(posedge clk);
+      check(dut.u_core.wr_fwd_pending === 1'b1, "W1's forward is pending (regression setup)");
+
+      // Present W2, a hit at a different address, while W1's forward is still pending and
+      // blocked. req_ready must be 0 for W2, and resp_valid must never fire for it.
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b1; req_addr <= 32'h0000_0020;
+      req_wdata <= 32'hBBBB_0002; req_wstrb <= 4'b1111; resp_ready <= 1'b1;
+      repeat (3) begin
+        @(posedge clk);
+        check(req_ready === 1'b0, "req_ready stays low for W2 while W1's forward is pending");
+        check(resp_valid === 1'b0, "resp_valid does not fire for a request req_ready never accepted");
+      end
+      req_valid <= 1'b0;
+      hold_not_ready <= 1'b0;
+      @(posedge clk);
+      wait (req_ready);
+
+      // Confirm W2 was genuinely never applied (data must be unchanged, since it was never accepted).
+      cpu_read(32'h0000_0020, rd);
+      check(rd === expected_word(32'h0000_0020), "W2's write never actually landed - value is still pristine");
+    end
+
+    if (errors == 0) begin
+      $display("** ALL TESTS PASSED **");
+      $finish;
+    end else begin
+      $display("** %0d TEST(S) FAILED **", errors);
+      $fatal(1);
+    end
   end
 endmodule
