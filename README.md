@@ -3,12 +3,15 @@
 **A parameterized, single-core, 3-level (L1/L2/L3) cache hierarchy controller.** Split
 direct-mapped write-through L1 instruction/data caches, unified set-associative write-back L2
 and L3 with tree-PLRU replacement, a custom valid/ready CPU-side interface, and an AXI4
-memory-side interface. Targets synthesis on **Sky130HD** standard cells via **Yosys**.
+memory-side interface. Synthesis, STA, and place-and-route all target **Sky130HD** via
+**Yosys + OpenSTA + OpenROAD**, in a single Makefile matching this portfolio's `Full-Adder` flow.
 
-> **Project status: Phase 0 of 11 — Requirements & Architecture.** No RTL has been written yet.
-> Every number in this repository either cites a checked-in tool report or is labelled
-> **NOT YET MEASURED**. See [`docs/00_project_plan.md`](docs/00_project_plan.md) for the full
-> phase plan and the Definition of Done for each phase.
+> **Project status: Phase 0 of 12 — Requirements & Architecture.** No RTL has been written yet.
+> Every number in this repository either cites a checked-in tool report, is labelled
+> **NOT YET MEASURED** (a locally-runnable figure that just hasn't been produced yet), or
+> **NOT YET RUN (external simulator required)** (the UVM verification tier — see below). See
+> [`docs/00_project_plan.md`](docs/00_project_plan.md) for the full phase plan and the Definition
+> of Done for each phase.
 
 ---
 
@@ -35,32 +38,53 @@ reasoning and the accepted tradeoff recorded in
    (MSHRs, hit-under-miss) were explicitly scoped out to keep the verification matrix tractable
    for a first fully-closed version — see D-004. The external interface contract was kept generic
    enough to add non-blocking support later without renegotiating it.
+5. **Verification is two-tiered because the toolchain honestly requires it, not by preference.**
+   A full SystemVerilog UVM environment needs SystemVerilog classes; Icarus 12 (the only simulator
+   on this machine) has none, and no UVM library or class-capable simulator is installed here
+   either — verified directly by trying to compile this portfolio's own `APB_Design_and_Verification`
+   project and getting `uvm_macros.svh not found`. Rather than either silently downgrading to a
+   non-UVM approach or shipping a UVM testbench nobody here can run (the failure mode already on
+   record for this portfolio's `axi_aes_engine`), this project keeps a locally-runnable plain-Verilog
+   smoke tier *and* writes the full UVM environment for external execution — see D-013.
 
 ## Documentation
 
 | Doc | Contents |
 |---|---|
-| [`docs/00_project_plan.md`](docs/00_project_plan.md) | Repository structure, 11 phase definitions with explicit Definition of Done, risks, verified toolchain state |
+| [`docs/00_project_plan.md`](docs/00_project_plan.md) | Repository structure, 13 phase definitions (0-12) with explicit Definition of Done, risks, verified toolchain state |
 | [`docs/01_requirements.md`](docs/01_requirements.md) | Full requirements specification — functional, address/sizing, performance, verification, synthesis, timing |
 | [`docs/02_architecture.md`](docs/02_architecture.md) | System architecture: hierarchy diagram, per-level address partitioning (derived, not asserted), module list, data flow |
 | [`docs/03_microarchitecture.md`](docs/03_microarchitecture.md) | Per-controller FSMs, the tree-PLRU algorithm with a worked example, the line-size adapter, the AXI4 fill engine |
 | [`docs/04_interfaces.md`](docs/04_interfaces.md) | Signal-level CPU-side, inter-level, and AXI4 memory-side interface specification |
-| [`docs/engineering_log.md`](docs/engineering_log.md) | Every architectural decision: options considered, decision, reason, and the tradeoff accepted — D-001 through D-012 |
+| [`docs/engineering_log.md`](docs/engineering_log.md) | Every architectural decision: options considered, decision, reason, and the tradeoff accepted — D-001 through D-014 |
 
-## Toolchain (verified on this machine, per project memory)
+## Verification: two tiers, deliberately
+
+- **Tier 1 — smoke tests** (`sim/`): plain, class-free Verilog, directed, runs on Icarus in this
+  repository via `make sim`. Guarantees the project always has at least one locally-runnable,
+  actually-passing form of verification checked in.
+- **Tier 2 — UVM environment** (`tb_uvm/`): a full IEEE 1800.2 UVM environment (transaction,
+  sequence, sequencer, driver, monitor, agent, scoreboard, env, test, config — matching this
+  portfolio's `APB_Design_and_Verification` structure), with constrained-random sequences and
+  functional coverage for maximum coverage. **This tier requires an external, class-capable
+  simulator** (VCS/Questa/Xcelium) that is not installed on this machine — attempting to compile
+  `APB_Design_and_Verification` here fails immediately with `uvm_macros.svh not found`, and
+  Icarus 12 has no SystemVerilog class support regardless. `tb_uvm/README.md` gives the exact
+  external invocation. Its pass/fail result and coverage numbers are labelled
+  **NOT YET RUN (external simulator required)** until run externally and the log is checked in.
+
+See D-013 in `docs/engineering_log.md` for the full reasoning, including the direct evidence.
+
+## Toolchain (verified on this machine)
 
 | Tool | Status | Use |
 |---|---|---|
-| Icarus Verilog 12.0 | installed | Simulation (cocotb-based — see below) |
+| Icarus Verilog 12.0 | installed | Tier-1 smoke-test simulator |
 | Yosys 0.33 | installed | Synthesis, target Sky130HD |
 | OpenSTA 2.7.0 | installed | Static timing analysis |
-| Sky130HD liberty/LEF | present on disk | `sky130hd_tt.lib` under the local OpenROAD test assets |
-| cocotb | **not yet installed** | Required from Phase 1 — `pip install cocotb` |
-
-**Why cocotb, not UVM:** Icarus Verilog 12 supports no SystemVerilog classes, `randomize()`,
-covergroups, or concurrent assertions, so a class-based UVM testbench cannot run on this
-toolchain. Verification from Phase 1 onward is cocotb (Python-driven, plain synthesizable RTL as
-the DUT) — see `docs/01_requirements.md` VR-01 and `docs/00_project_plan.md` §5.
+| OpenROAD v2.0-25346 | **installed, verified runnable** | Place and route, target Sky130HD |
+| Sky130HD liberty/LEF | present on disk | Copied into `sky130hd/` |
+| Class-capable SV simulator (VCS/Questa/Xcelium) + UVM library | **not installed** | Required only for `tb_uvm/`, supplied externally by the user |
 
 ## Reproducing the numbers in this README
 

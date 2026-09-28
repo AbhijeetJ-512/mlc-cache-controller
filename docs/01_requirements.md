@@ -37,7 +37,7 @@ reasoning.
 | Virtual memory / TLB / address translation | This is a cache controller project, not an MMU project. The CPU-side interface takes physical addresses directly. | D-011 |
 | Inclusive or exclusive inter-level policy (back-invalidation, victim-insertion) | Both exist primarily to bound coherency snoop traffic, which does not apply in a single-core, no-coherency design; paying either policy's complexity here buys no offsetting benefit. | D-008 |
 | Unaligned / narrow / partial AXI4 transfers | Every fill or write-back is exactly one cache line; keeps the AXI4 compliance surface small and matches how a real LLC talks to memory. | D-012 |
-| Full physical place-and-route | The stated deliverable is synthesis with Yosys targeting Sky130HD, not a full P&R flow. Sky130HD LEF files are present on this machine if P&R is added as a later, explicitly-scoped phase. | — |
+| ~~Full physical place-and-route~~ **— superseded, now in scope** | Originally excluded at Phase 0 baseline. Reintroduced after spec review: Yosys synthesis + OpenSTA + OpenROAD P&R, Makefile-driven, matching the portfolio's `Full-Adder` flow. See §9a. | D-014 |
 
 ---
 
@@ -189,20 +189,32 @@ Full derivation and the address-field diagrams are in `02_architecture.md` §2. 
 
 ## 8. Verification Requirements
 
-Full plan to be detailed in a future `05_verification_plan.md` when Phase 5 opens; binding
+**Two-tier strategy, fixed after spec review (D-013).** Icarus Verilog 12 — the only simulator
+installed on this machine — supports no SystemVerilog classes, so it cannot run UVM; no other
+simulator is installed. The user will run the UVM tier on an external simulator they supply. Full
+plan to be detailed in a future `05_verification_plan.md` when Phase 5 opens; binding
 requirements fixed now because they constrain how RTL is written from Phase 1 onward:
+
+### 8.1 Tier 1 — Smoke tests (plain Verilog, runs on Icarus, in this repo)
 
 | ID | Tier | Requirement |
 |---|---|---|
-| VR-01 | M | Verification shall be **cocotb-based**, not UVM/class-based SystemVerilog, because Icarus Verilog 12 (the only simulator installed) supports no classes, `randomize()`, covergroups, or concurrent SVA (`vlsi-toolchain-reality`). |
-| VR-02 | M | A Python functional golden model (cache-state model: which lines are present, dirty, and which way PLRU would select — not a timing model) shall be the reference for every level. |
-| VR-03 | M | All RTL output shall be automatically checked against the reference model by a scoreboard. No test shall pass on visual waveform inspection. |
-| VR-04 | M | The testbench shall be able to independently stall the CPU-side response path and the AXI4 response path, including indefinite one-sided stalls. |
-| VR-05 | M | The following shall each have at least one directed test: reset, cold miss, repeated hit, every byte-enable pattern, conflict-miss thrashing (L1 and per-set at L2/L3), dirty-victim eviction, clean-victim eviction, PLRU exhaustive check up to a bounded sequence length, line-size-adapter split and merge, AXI4 burst length/alignment, reset mid-fill, sustained random mixed I$/D$ traffic. |
-| VR-06 | M | Functional coverage shall be defined and collected for: hit/miss per level, eviction dirty vs. clean, PLRU way selected (each way, each set-depth in the tree), CPU-side backpressure patterns, AXI4 backpressure patterns. |
-| VR-07 | S | Coverage closure criteria shall be defined before Phase 5 sign-off. Reported coverage shall be measured, never estimated. |
-| VR-08 | N | Best-effort formal proofs (PLRU-tree invariant, FSM reachability, AXI4 protocol properties) attempted in Phase 6, contingent on installing Verilator/SymbiYosys, which are not present on this machine today. Any property not attempted or not proved shall be documented as such, never reported as proved. |
-| VR-09 | M | The regression shall be runnable via a single `make` target on a clean Linux machine with no proprietary tools. |
+| VR-01 | M | A class-free, plain-Verilog directed testbench per controller (`tb/smoke/`) shall run on Icarus Verilog 12 with no external dependency, giving this repository at least one form of verification that is always locally runnable and checked in as a passing log. |
+| VR-02 | M | The smoke tier shall directly check RTL output against expected values computed in the testbench itself (simple `if`/`$display`/`$fatal` checks) — no scoreboard framework, no classes. |
+| VR-03 | M | The smoke tier shall cover, at minimum, one instance each of: reset, cold miss, repeated hit, one dirty-victim eviction, one clean-victim eviction, per controller class (L1, L2, L3). It is a sanity net, not the primary coverage vehicle — VR-04 below carries that role. |
+| VR-04 | S | The smoke tier's pass/fail result shall be produced by actually running it on this machine (`make sim`) and the log checked in — never asserted. |
+
+### 8.2 Tier 2 — UVM environment (SystemVerilog classes, external simulator)
+
+| ID | Tier | Requirement |
+|---|---|---|
+| VR-05 | M | The UVM environment shall follow the transaction / sequence / sequencer / driver / monitor / agent / scoreboard / env / test / config layering, one file per component, matching the structure already used by this portfolio's `APB_Design_and_Verification` project. |
+| VR-06 | M | A `uvm_sequence_item` transaction shall model one CPU-side request (address, we, wdata, wstrb) with `rand` fields and `constraint` blocks enforcing legal ranges (address alignment where applicable, legal `wstrb` encodings). A second transaction type shall model one AXI4 beat on the memory-side agent. |
+| VR-07 | M | Sequences shall include at minimum: cold-miss, repeated-hit, conflict-miss-thrash (directed, per level), dirty-eviction, clean-eviction, a bounded-length PLRU-exhaustive sequence, and a constrained-random mixed-traffic sequence for maximum-coverage regression. |
+| VR-08 | M | A UVM scoreboard shall check every RTL response against a SystemVerilog reference/predictor model of cache state (which lines are present, dirty, and which way PLRU would select) — the same functional model the Tier-1 smoke tests check against informally, now expressed as a proper predictor class. No test shall pass on waveform inspection alone. |
+| VR-09 | M | Functional coverage (`covergroup`/`coverpoint`) shall be defined for: hit/miss per level, eviction dirty vs. clean, PLRU way selected (each way, each tree depth), CPU-side backpressure patterns, AXI4 backpressure patterns. Coverage closure criteria shall be defined before this tier is considered closed. |
+| VR-10 | M | Because this tier requires SystemVerilog class support this machine's installed simulator lacks, **its regression cannot be executed inside this repository's own tooling**. The Makefile shall expose a `make uvm SIMULATOR=<tool>` target documenting the exact external invocation. Per the project's `NOT YET MEASURED`/`NOT YET RUN` policy (DR-03), no pass/fail result, coverage percentage, or "verified" claim for this tier shall appear in any document until the user has actually run it externally and the log is checked into this repository. |
+| VR-11 | N | Best-effort formal proofs (PLRU-tree invariant, FSM reachability, AXI4 protocol properties) attempted in Phase 6, contingent on installing Verilator/SymbiYosys, which are not present on this machine today. Any property not attempted or not proved shall be documented as such, never reported as proved. |
 
 ---
 
@@ -218,6 +230,26 @@ requirements fixed now because they constrain how RTL is written from Phase 1 on
 | SR-06 | M | The design shall contain no clock gating, no latches, and no combinational feedback loops. |
 | SR-07 | M | Synthesis shall be reproducible: a single script, checked in, with the library path as the only external dependency. |
 | SR-08 | S | Synthesis shall be run at each point of the capacity/associativity sweep defined in `00_project_plan.md` Phase 9, to make the direct-mapped-vs-set-associative and true-LRU-vs-PLRU area tradeoffs measurable rather than asserted. |
+
+---
+
+## 9a. Physical Design (Place & Route) Requirements
+
+**Added per D-014**, superseding the original Phase-0 scope boundary that excluded full P&R.
+Verified feasible on this machine before being added: `openroad` (`v2.0-25346-gc62be3f952`) is
+installed and runnable, and the Sky130HD LEF files this flow needs are present alongside the
+liberty file already used for synthesis/STA.
+
+| ID | Tier | Requirement |
+|---|---|---|
+| PD-01 | M | The synthesized netlist shall be carried through floorplanning, power distribution network (PDN) generation, global placement, detailed placement, clock-tree-free routing (this design is not expected to require CTS given its single-clock, non-pipelined-at-top structure — to be confirmed, not assumed), and detailed routing, using OpenROAD, targeting Sky130HD. |
+| PD-02 | M | The flow shall be driven by a single Makefile matching the pattern already validated in this portfolio's `Full-Adder` project: `make synth`, `make sta`, `make pnr`, `make sim`, `make all`, `make summary`, `make view`, `make clean`/`distclean`. |
+| PD-03 | M | P&R shall be attempted first on the smallest controller instance (L1) before the full hierarchy, mirroring the staged approach already required for the Yosys-only synthesis sweep (SR-08) — congestion and routing runtime at full size are not yet known (see `00_project_plan.md` risk on this). |
+| PD-04 | S | Final routed DEF, the extracted SPEF, and a routing-DRC report shall be checked into `pnr_results/`, matching `Full-Adder`'s convention. |
+| PD-05 | S | A `make view` target shall open the final routed layout in the OpenROAD GUI for visual inspection, matching `Full-Adder`. |
+
+**Current status: NOT YET RUN.** No RTL exists yet (Phase 0). Tracked as Phase 9 in
+`00_project_plan.md`.
 
 ---
 
@@ -253,7 +285,7 @@ requirements fixed now because they constrain how RTL is written from Phase 1 on
 |---|---|---|
 | DR-01 | M | Every architectural decision shall be recorded in `docs/engineering_log.md` with options considered, decision, reason, and tradeoff — this is the direct answer to the project's stated requirement that every tradeoff be explained. |
 | DR-02 | M | The README shall state exactly how to reproduce every number it reports. |
-| DR-03 | M | No number shall appear in any document without either a report-file reference or a **NOT YET MEASURED** label (`no-unverified-numbers` policy). |
+| DR-03 | M | No number shall appear in any document without either a report-file reference or a **NOT YET MEASURED** label (`no-unverified-numbers` policy). **NOT YET RUN (external simulator required)** is a distinct, equally binding label reserved for the UVM tier (VR-10): it means the tool that would produce the figure is not installed on this machine at all, as opposed to **NOT YET MEASURED**, which means the tool is installed here but has not been run yet. Neither label may be silently upgraded to a claimed result without the corresponding report or log actually being checked in. |
 
 ---
 
@@ -261,8 +293,8 @@ requirements fixed now because they constrain how RTL is written from Phase 1 on
 
 | Tier | Count | Blocking for |
 |---|---|---|
-| MUST | 71 | RTL sign-off |
-| SHOULD | 8 | Final release |
+| MUST | 76 | RTL sign-off |
+| SHOULD | 10 | Final release |
 | NICE | 4 | Neither |
 
 ---
@@ -275,6 +307,8 @@ requirements fixed now because they constrain how RTL is written from Phase 1 on
 | OQ-2 | Is a single shared victim/write-buffer register enough at L2/L3 (one write-back in flight at a time, consistent with blocking misses), or does the write-back-then-fill sequencing need a dedicated buffer per level? | Design | Phase 2 |
 | OQ-3 | Should the AXI4 fill engine support outstanding-transaction pipelining (issuing the next AR before the previous R burst completes), or is one AXI4 transaction at a time sufficient given blocking misses already serialize at L3? | Design | Phase 3 |
 | OQ-4 | Will Yosys elaboration/synthesis runtime for the L3 configuration (8-way, 512 sets, widest tag/PLRU array) be tractable on this machine? | Impl | Phase 7 |
+| OQ-5 | Which external simulator and UVM library version (IEEE 1800.2 / Accellera UVM 1.2, or a vendor-bundled UVM) will the UVM tier actually be run on? The environment will be written to the standard 1800.2 API and not to any single vendor's quirks, but the exact `make uvm SIMULATOR=` invocation needs a concrete target. | User | Phase 5 |
+| OQ-6 | Will OpenROAD P&R close (legal placement, DRC-clean routing) on the full-size hierarchy in reasonable runtime, or will it need to be attempted only at reduced sizing (per PD-03's staged approach)? | Impl | Phase 9 |
 
 ---
 

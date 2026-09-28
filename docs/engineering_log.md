@@ -370,5 +370,109 @@ noted here so a future revisit knows this decision was scope-driven, not an over
 
 ---
 
-*Next: user review of the written spec (`01_requirements.md` through `04_interfaces.md`,
+## D-013 — Verification methodology: classic SystemVerilog UVM vs. cocotb
+
+**2026-09-28 · Phase 0 (spec revision, after initial review)**
+
+**Problem.** The initial spec (VR-01, D-000-adjacent toolchain note) fixed cocotb as the
+verification approach specifically because Icarus Verilog 12 — the only simulator installed on
+this machine — supports no SystemVerilog classes, `randomize()`, covergroups, or concurrent SVA.
+During spec review, the request changed to classic UVM, "the same as" the portfolio's existing
+`APB_Design_and_Verification` project. That project was checked directly rather than assumed to
+work: its testbench is genuine class-based UVM (`class ... extends uvm_*` in `agent.sv`,
+`driver.sv`, `env.sv`, `monitor.sv`, `scoreboard.sv`, `sequence.sv`, `test.sv`, `transaction.sv`,
+`config.sv`), and attempting to compile it here fails immediately —
+`testbench.sv:4: Include file uvm_macros.svh not found` — because no UVM library is installed
+and no class-capable simulator exists on this machine (`which vcs questa xrun irun verilator` all
+returned nothing). This is the same "claimed UVM, nothing ever actually ran" failure mode already
+on record for `axi_aes_engine` (see `no-unverified-numbers` memory).
+
+**Options considered.**
+
+1. *pyuvm on cocotb+Icarus* — a Python re-implementation of the UVM base classes (agents,
+   drivers, monitors, scoreboards, sequences, the factory, phases) that actually executes on the
+   installed toolchain.
+2. *Install Verilator and attempt real SV UVM* — Verilator 5.x has partial, still-experimental
+   class support; a real gamble that could reproduce the same "doesn't actually run" outcome
+   after real time investment.
+3. *Classic SystemVerilog UVM, written properly, targeting an external simulator the user
+   supplies outside this machine/session* (matching `APB_Design_and_Verification`'s exact
+   structure: transaction/sequence/sequencer/driver/monitor/agent/scoreboard/env/test/config,
+   one file per component).
+4. *Keep the already-approved cocotb plan, no UVM structuring.*
+
+Presented to the user as an explicit choice (with the compile-failure evidence above shown
+directly), since this is a decision only they could make — proceeding with Option 1 or 4
+unilaterally would have quietly overridden an explicit request; proceeding with classic UVM
+without surfacing the compile failure would have repeated the exact unverifiable-claim failure
+mode this project's `no-unverified-numbers` policy exists to prevent.
+
+**Decision.** Option 3 — classic SystemVerilog UVM, written to the same structural pattern as
+`APB_Design_and_Verification`, targeting an external simulator the user runs outside this
+machine/session.
+
+**Reason.** The user's own answer: run synthesis with the system's Yosys (which this machine can
+execute end-to-end and verify), and run the UVM verification "with an external simulator" they
+have separate access to. This is the one option that gives genuine, full SystemVerilog UVM (not
+an approximation) while being honest about what this machine and session can and cannot execute.
+
+**Tradeoffs — the significant one.** The UVM regression's pass/fail result **cannot be produced
+or checked in by this session**, because the tool that would run it is not here. This is
+mitigated three ways, each now binding (see `01_requirements.md` VR-07/VR-08):
+(a) a second, lightweight **smoke tier** — plain-Verilog, class-free, directed testbenches that
+**do** run on Icarus in this repo, covering the same core scenarios, so the repo is never left
+with zero locally-runnable verification; (b) the exact reproduction command for the UVM tier is
+documented so the external run is a copy-paste, not a guess; (c) per `no-unverified-numbers`,
+no UVM pass/fail/coverage figure will be asserted in any document until the user actually runs it
+externally and the log is checked in — until then, every such figure is labelled
+**NOT YET RUN (external simulator required)**, distinct from **NOT YET MEASURED** (which means
+"the tool to produce this hasn't been run yet, but could be, on this machine").
+
+**Result.** `01_requirements.md` §8 rewritten for the two-tier strategy; `00_project_plan.md`
+repository structure and Phase 5/6 updated; `README.md` toolchain section updated.
+
+---
+
+## D-014 — Build flow: Yosys + OpenSTA + OpenROAD place-and-route, Makefile-driven
+
+**2026-09-28 · Phase 0 (spec revision, after initial review)**
+
+**Problem.** The initial spec (`01_requirements.md` §1.1 Non-Objectives) explicitly excluded full
+physical place-and-route, scoping the synthesis deliverable to Yosys + OpenSTA only. The request
+changed to building the project "like `Full-Adder`," which runs a complete Yosys -> OpenSTA ->
+OpenROAD RTL-to-GDS flow against Sky130HD through a single Makefile (`make synth`/`sta`/`pnr`/
+`sim`/`all`/`summary`/`view`).
+
+**Options considered.**
+
+1. *Keep synthesis+STA only, as originally scoped.*
+2. *Adopt the full `Full-Adder`-style flow: Yosys synthesis -> OpenSTA -> OpenROAD floorplan/
+   place/route/extraction, one Makefile, matching directory shape
+   (`rtl/`, `scripts/`, `sim/`, `sky130hd/`, `config/`, `build/`, `pnr_results/`).*
+
+**Decision.** Option 2. Verified first, not assumed: `openroad` is installed and runs
+(`/usr/local/bin/openroad`, `v2.0-25346-gc62be3f952`), and the Sky130HD LEF files this flow needs
+(`sky130hd_std_cell.lef`, `sky130_fd_sc_hd_merged.lef`) are already present alongside the liberty
+file already in use for synthesis/STA.
+
+**Reason.** Every tool the extended flow needs is confirmed present and runnable on this machine
+— this is not a speculative addition. Matching `Full-Adder`'s Makefile target shape also gives
+this project the same reviewer-facing "one command per flow stage" ergonomics already validated
+in that project.
+
+**Tradeoffs.** A 3-level cache hierarchy's tag/PLRU/data arrays are far larger than a full
+adder's few gates; placement congestion, routing runtime, and DEF/SPEF generation time are
+expected to be materially higher and are **not yet known** to close cleanly at the default
+sizing (`01_requirements.md` §4). This is tracked as a new risk (`00_project_plan.md` §4) rather
+than assumed away — if P&R proves intractable at full size, the fallback (documented when it
+becomes relevant, not preemptively) is running the flow on the smallest single controller
+instance (L1) first and scaling up, the same staged approach already used for the Yosys-only
+synthesis sweep (Phase 9).
+
+**Result.** `00_project_plan.md` repository structure, Phase list, and toolchain table updated;
+`01_requirements.md` §1.1 Non-Objectives row for P&R marked superseded.
+
+---
+
+*Next: user review of the revised spec (`01_requirements.md` through `04_interfaces.md`,
 this log), then `writing-plans` for the Phase 1 implementation plan.*

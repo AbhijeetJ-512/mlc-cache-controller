@@ -2,12 +2,16 @@
 
 **IP:** `mlc_cache_controller` — Multi-Level (L1/L2/L3) Cache Controller
 **Interfaces:** Custom valid/ready (CPU side) / AXI4 (memory side)
-**Document status:** Phase 0 — Baseline. Approved for Phase 1 entry pending spec review.
-**Revision:** 0.1 · 2026-09-28
+**Document status:** Phase 0 — Baseline, revised after spec review (D-013, D-014).
+**Revision:** 0.2 · 2026-09-28
 
 ---
 
 ## 1. Repository Structure
+
+Merges this project's RTL/doc organization with the flow layout already validated in this
+portfolio's `Full-Adder` project (Yosys -> OpenSTA -> OpenROAD, single Makefile, `sky130hd/`
+copied in directly) and adds the two verification tiers fixed in D-013.
 
 ```
 mlc_cache_controller/
@@ -21,25 +25,43 @@ mlc_cache_controller/
 │   ├── mem_if/          axi4_fill_engine.sv        AXI4 burst master (L3 <-> memory)
 │   └── common/          mlc_pkg.sv, reset_sync.sv
 │
-├── tb/
-│   └── cocotb/
-│       ├── model/       Python functional golden model (cache state, not timing)
-│       ├── env/         CPU-side driver/monitor, AXI4 driver/monitor, scoreboard, coverage
-│       └── tests/       one file per test scenario
+├── sim/                          Tier 1 — smoke tests: plain Verilog, class-free, Icarus-runnable
+│   ├── tb_l1_icache.v, tb_l1_dcache.v
+│   ├── tb_l2.v, tb_plru.v
+│   ├── tb_l3.v, tb_adapter.v
+│   ├── tb_top.v                  + a small behavioral AXI4 memory model (plain Verilog)
+│   └── waveform*.vcd             generated (gitignored except one representative capture)
+│
+├── tb_uvm/                       Tier 2 — UVM environment: SystemVerilog classes, EXTERNAL simulator
+│   ├── transaction.sv, sequence.sv, sequencer.sv
+│   ├── driver.sv, monitor.sv, agent.sv
+│   ├── scoreboard.sv, env.sv, config.sv, test.sv
+│   ├── tb_top_uvm.sv
+│   └── README.md                 exact `make uvm SIMULATOR=<tool>` invocation (D-013)
 │
 ├── assertions/          SVA property files (Verilator/formal only — not runnable on Icarus)
 ├── formal/              SymbiYosys .sby scripts (tool not installed — documented as such)
-├── constraints/         SDC per configuration
-├── scripts/             build glue, capacity/associativity sweep driver, report parsers
-├── sim/                 simulation build artefacts (gitignored)
-├── synthesis/
-│   ├── scripts/         Yosys scripts (Sky130HD liberty path as only external dependency)
-│   └── reports/         checked-in synthesis reports
-├── sta/
-│   ├── scripts/         OpenSTA scripts
-│   └── reports/         checked-in timing reports
-├── results/             measured PPA sweep data + generated tables
-├── docs/                this documentation set
+├── constraints/         SDC (this design is sequential, unlike Full-Adder's purely-combinational
+│                        example, so a real clock constraint is required for meaningful STA/PnR)
+│
+├── scripts/             ALL flow scripts, matching Full-Adder's convention
+│   ├── synth.ys                  Yosys synthesis -> Sky130HD
+│   ├── sta.tcl                   OpenSTA timing/power
+│   ├── pnr_flow.tcl              OpenROAD floorplan/place/route/extract
+│   ├── floorplan.tcl, flow_helpers.tcl, helpers.tcl, view_design.tcl
+│   └── ppa_sweep.py              capacity/associativity sweep driver
+│
+├── config/              floorplan.tcl + platform.tcl wrapper (Full-Adder convention)
+├── sky130hd/             Sky130HD liberty/LEF/tracks copied in (not symlinked — keeps the repo
+│                        self-contained and reproducible without depending on an external path)
+│
+├── build/
+│   └── reports/         stat.txt, timing.txt, power_report.txt (checked in)
+├── pnr_results/          final routed DEF/DB/SPEF + routing-DRC report (checked in, PD-04)
+├── results/              measured PPA sweep data + generated tables
+│
+├── docs/                 this documentation set
+├── Makefile              synth / sta / pnr / sim / uvm / all / summary / view / clean / distclean
 └── README.md
 ```
 
@@ -47,25 +69,30 @@ mlc_cache_controller/
 
 1. **RTL is grouped by architectural role, matching the hierarchy itself.** `rtl/l1/`, `rtl/l2/`,
    `rtl/l3/` are separate because each level makes a genuinely different organization/policy
-   choice (see `01_requirements.md` §1.1); `rtl/adapter/` and `rtl/replace/` are pulled out as
-   standalone, reusable modules rather than folded into a specific level's controller, because
-   the line-size adapter and the PLRU tree are both used by more than one instance and neither
-   is conceptually part of "being a cache controller."
-2. **Every tool that produces numbers has a `scripts/`/`reports/` pair, checked in**, so every
-   figure in a document is traceable to a file, never asserted (`no-unverified-numbers` policy —
-   see engineering log D-000 note below and `01_requirements.md` §12).
-3. **Verification is separated by what can execute it.** `tb/cocotb/` runs on Icarus today.
-   `assertions/` and `formal/` need tools not currently installed on this machine (Verilator,
-   SymbiYosys) and are kept isolated so a reviewer with only Icarus still gets a working
-   regression — same rationale as prior portfolio IP, and a direct consequence of the toolchain
-   constraints recorded in memory (`vlsi-toolchain-reality`).
+   choice (`01_requirements.md` §1.1); `rtl/adapter/` and `rtl/replace/` are standalone, reusable
+   modules used by more than one instance.
+2. **Every tool that produces numbers has a script and a checked-in report/results location**, so
+   every figure in a document is traceable to a file, never asserted (`no-unverified-numbers`
+   policy — `01_requirements.md` §12).
+3. **Verification is split into exactly the two tiers this machine's toolchain forces (D-013),
+   and each tier's directory says so by its name.** `sim/` is plain Verilog because that is what
+   Icarus 12 can actually execute (no classes) — matching `Full-Adder`'s own `sim/` convention
+   exactly. `tb_uvm/` is real SystemVerilog UVM, deliberately kept in its own top-level directory
+   (not nested under `sim/`) specifically *because* it cannot be run by this repository's own
+   tooling — the separation is a statement of fact about execution capability, not a style choice.
+4. **The synthesis/STA/PnR flow is unified into `scripts/`+`build/`+`pnr_results/`, matching
+   `Full-Adder`**, rather than the earlier `synthesis/`+`sta/` split — this project now runs the
+   same one-Makefile, one-`scripts/`-directory flow shape already proven in that project.
 
 ---
 
 ## 2. Phase Definitions
 
 Each phase has an explicit **Definition of Done**. A phase is not complete because code exists;
-it is complete when its acceptance criteria have been *executed* and the results recorded.
+it is complete when its acceptance criteria have been *executed* and the results recorded. For
+the UVM tier specifically, "executed" means executed by the user on their external simulator —
+this repository's own Definition of Done for that tier is scoped to "written, structurally
+complete, and documented," never to a pass/fail this session cannot produce (D-013).
 
 ---
 
@@ -75,8 +102,8 @@ it is complete when its acceptance criteria have been *executed* and the results
 |---|---|
 | **Objective** | Fix the hierarchy shape, the interfaces, the address/sizing contract and the architecture before any RTL is written. |
 | **Deliverables** | `00_project_plan.md`, `01_requirements.md`, `02_architecture.md`, `03_microarchitecture.md`, `04_interfaces.md`, `engineering_log.md`, `README.md` |
-| **Verification** | Design review with the project owner (this brainstorming session); every scope decision recorded with a tradeoff in `engineering_log.md` |
-| **Definition of Done** | Hierarchy shape (levels, associativity, write policy, inclusion policy, miss handling) fixed with written justification against alternatives; every requirement tiered MUST/SHOULD/NICE; architecture diagram with named blocks and stated responsibilities; address partitioning derived and internally consistent across all three levels; every decision logged with tradeoffs; no un-justified numeric constant |
+| **Verification** | Design review with the project owner; every scope decision recorded with a tradeoff in `engineering_log.md`, including two revisions made during review itself (D-013, D-014) |
+| **Definition of Done** | Hierarchy shape fixed with written justification against alternatives; every requirement tiered MUST/SHOULD/NICE; architecture diagram with named blocks; address partitioning derived and internally consistent; every decision logged with tradeoffs; no un-justified numeric constant |
 
 ---
 
@@ -84,11 +111,11 @@ it is complete when its acceptance criteria have been *executed* and the results
 
 | | |
 |---|---|
-| **Objective** | A working, protocol-legal direct-mapped write-through cache controller, verified standalone against a golden model, before L2/L3 exist. |
-| **Files** | `rtl/common/mlc_pkg.sv`, `rtl/common/reset_sync.sv`, `rtl/l1/l1_icache_ctrl.sv`, `rtl/l1/l1_dcache_ctrl.sv`, `tb/cocotb/model/l1_ref.py`, `tb/cocotb/env/cpu_driver.py`, `tb/cocotb/tests/test_l1.py` |
-| **Work** | Tag/valid array; 4-state FSM (`IDLE -> TAG_CHECK -> ALLOC_FILL -> UPDATE_TAG`, no eviction/write-back state — see D-006); single-cycle hit path; byte-enable write merge; downstream request/response port standing in for L2 (driven by a behavioral model until Phase 2 exists) |
-| **Tests** | Cold-miss fill; repeated hit; every byte-enable pattern on a write; back-to-back requests; downstream backpressure held indefinitely; reset mid-fill; I$ instance rejects/ignores write requests |
-| **Done when** | All tests pass under cocotb+Icarus against the Python reference for >= 100k randomized CPU-side transactions per instance; Yosys elaborates both modules with zero inferred latches |
+| **Objective** | A working, protocol-legal direct-mapped write-through cache controller, smoke-tested standalone, before L2/L3 exist. |
+| **Files** | `rtl/common/mlc_pkg.sv`, `rtl/common/reset_sync.sv`, `rtl/l1/l1_icache_ctrl.sv`, `rtl/l1/l1_dcache_ctrl.sv`, `sim/tb_l1_icache.v`, `sim/tb_l1_dcache.v` |
+| **Work** | Tag/valid array; 4-state FSM (`IDLE -> TAG_CHECK -> ALLOC_FILL -> UPDATE_TAG`, no eviction state — D-006); single-cycle hit path; byte-enable write merge; downstream port standing in for L2 (driven by a small behavioral stub until Phase 2 exists) |
+| **Tests (Tier 1, this repo)** | Reset; cold-miss fill; repeated hit; every byte-enable pattern on a write; back-to-back requests; downstream backpressure held indefinitely; reset mid-fill; I$ instance rejects/ignores write requests — each a directed, self-checking (`$fatal` on mismatch) case in `sim/tb_l1_*.v` |
+| **Done when** | `make sim` runs all Tier-1 L1 smoke cases with zero failures on Icarus; Yosys elaborates both modules with zero inferred latches. Comprehensive randomized/coverage-driven verification of L1 is carried by the Tier-2 UVM environment (Phase 5), not this phase. |
 
 ---
 
@@ -96,11 +123,11 @@ it is complete when its acceptance criteria have been *executed* and the results
 
 | | |
 |---|---|
-| **Objective** | A working set-associative write-back controller with tree-PLRU, verified standalone against a golden model. |
-| **Files** | `rtl/replace/plru_tree.sv`, `rtl/l2/l2_cache_ctrl.sv`, `tb/cocotb/model/l2_ref.py`, `tb/cocotb/tests/test_l2.py`, `tb/cocotb/tests/test_plru.py` |
-| **Work** | Tag/valid/dirty array per way; PLRU tree (3 bits/set for 4-way); 5-state FSM including `EVICT_WRITEBACK`; victim write-back only when the selected way's dirty bit is set |
-| **Tests** | PLRU tree exhaustively checked against a reference permutation model for every access sequence up to a bounded length; dirty-victim eviction produces exactly one write-back per eviction; clean-victim eviction produces zero write-backs; conflict-miss thrashing across all 4 ways in a set |
-| **Done when** | Bit-exact match against the Python reference for the cache-state model (which lines are present, which are dirty, which way PLRU would select) across a randomized access-sequence regression; Yosys elaborates with zero inferred latches |
+| **Objective** | A working set-associative write-back controller with tree-PLRU, smoke-tested standalone. |
+| **Files** | `rtl/replace/plru_tree.sv`, `rtl/l2/l2_cache_ctrl.sv`, `sim/tb_l2.v`, `sim/tb_plru.v` |
+| **Work** | Tag/valid/dirty array per way; PLRU tree (3 bits/set for 4-way, per `03_microarchitecture.md` §2); 5-state FSM including `EVICT_WRITEBACK`; victim write-back only when the selected way's dirty bit is set |
+| **Tests (Tier 1)** | `tb_plru.v` exhaustively replays the hand-verified sequences from `03_microarchitecture.md` §2.1 (reset -> access way0 -> access way2, expecting victim=way1) plus every other short sequence up to the same bound, checked against hardcoded expected values — the state space is small enough that this is a genuine exhaustive check, not a sampled one. `tb_l2.v` covers: dirty-victim eviction produces exactly one write-back; clean-victim eviction produces zero; conflict-miss thrashing across all 4 ways in a set. |
+| **Done when** | `make sim` runs all Tier-1 L2/PLRU cases with zero failures on Icarus; Yosys elaborates with zero inferred latches. Randomized/coverage-driven verification is Tier 2 (Phase 5). |
 
 ---
 
@@ -109,10 +136,10 @@ it is complete when its acceptance criteria have been *executed* and the results
 | | |
 |---|---|
 | **Objective** | The last-level cache, its wider line, the L2<->L3 line-size adapter, and the AXI4 fill engine to memory. |
-| **Files** | `rtl/l3/l3_cache_ctrl.sv`, `rtl/adapter/l2_l3_width_adapter.sv`, `rtl/mem_if/axi4_fill_engine.sv`, `tb/cocotb/env/axi4_driver.py` (AXI4 memory-side responder model), `tb/cocotb/tests/test_l3.py`, `tb/cocotb/tests/test_adapter.py` |
-| **Work** | 8-way write-back L2 controller variant reused with L3 parameters (see `01_requirements.md` PM-xx — the same `rtl/l2/`-style controller is instantiated for L3 as it shares the write-back+PLRU organization; only `rtl/adapter/` and `rtl/mem_if/` are new modules; see D-009); adapter sequences 2 L2-line beats per L3 line; AXI4 fill engine issues one fixed-length `INCR` burst per line fill/write-back |
-| **Tests** | Adapter correctly splits/merges every L3 line into exactly 2 ordered L2-line beats in both directions; AXI4 burst length/size fixed and correct for the configured `L3_LINE_BYTES`/`AXI_DATA_W`; AXI4 protocol assertions (from a lightweight cocotb-based checker, since SVA is not runnable here) pass on every transfer |
-| **Done when** | End-to-end line fill and write-back verified byte-exact against the reference model through the full L2<->adapter<->L3<->AXI4 path; zero AXI4 protocol violations over a randomized regression |
+| **Files** | `rtl/l3/l3_cache_ctrl.sv`, `rtl/adapter/l2_l3_width_adapter.sv`, `rtl/mem_if/axi4_fill_engine.sv`, `sim/tb_l3.v`, `sim/tb_adapter.v` |
+| **Work** | The same parameterized write-back controller as L2, elaborated at L3's parameters (FR-17, D-009); adapter sequences the single-half routing described in `03_microarchitecture.md` §3; AXI4 fill engine issues one fixed-length `INCR` burst per line fill/write-back |
+| **Tests (Tier 1)** | `tb_adapter.v`: every request routes to the correct half (address bit 5) in both fill and write-back directions, directed. `tb_l3.v`: AXI4 burst shape is fixed and known in advance (D-012), so `ARLEN`/`ARSIZE`/`AWLEN`/`AWSIZE`/burst-type are checked against hardcoded expected values by a small directed Verilog checker — no protocol-assertion framework needed because misalignment cannot occur by construction. |
+| **Done when** | `make sim` runs all Tier-1 L3/adapter cases with zero failures on Icarus. Randomized AXI4 traffic and full protocol coverage is Tier 2 (Phase 5). |
 
 ---
 
@@ -120,23 +147,22 @@ it is complete when its acceptance criteria have been *executed* and the results
 
 | | |
 |---|---|
-| **Objective** | L1-I, L1-D, L2, L3 and the AXI4 memory-side connected as one IP, with a behavioral memory model standing in for DRAM. |
-| **Files** | `rtl/top/mlc_cache_top.sv`, `tb/cocotb/env/mem_model.py` (AXI4 slave behavioral memory), `tb/cocotb/tests/test_integration.py` |
+| **Objective** | L1-I, L1-D, L2, L3 and the AXI4 memory-side connected as one IP, with a small behavioral memory model standing in for DRAM. |
+| **Files** | `rtl/top/mlc_cache_top.sv`, `sim/tb_top.v` (includes a plain-Verilog behavioral AXI4 memory model — feasible because every transfer has the one fixed shape fixed by D-012) |
 | **Work** | Wire L1-I/L1-D each to L2; L2 to L3 through the adapter; L3 to the AXI4 fill engine; the fill engine to the behavioral memory model |
-| **Tests** | End-to-end load/store traffic mixing I-fetch and D-access streams; every miss propagates correctly through however many levels are actually missed (L1-only, L1+L2, or all three); write-back chains correctly across levels on eviction; sustained random traffic with no data corruption |
-| **Done when** | >= 1,000,000 randomized CPU-side transactions (mixed I$/D$) match the Python reference bit-exactly; zero deadlocks under randomized backpressure at every interface |
+| **Tests (Tier 1)** | A directed regression mixing I-fetch and D-access traffic, hand- and script-generated, exercising hits/misses at every level (L1-only, L1+L2, all three) and write-back chains across levels, checked in `sim/tb_top.v` |
+| **Done when** | `make sim` runs the Tier-1 integration regression with zero failures on Icarus; zero deadlocks observed under directed backpressure sequences. The **comprehensive** (>=large-N, constrained-random, maximum-coverage) regression this design ultimately needs is the Tier-2 UVM environment (Phase 5) — this phase's directed regression is a bring-up gate, not the final verification claim. |
 
 ---
 
-### PHASE 5 — Verification Closure
+### PHASE 5 — Verification Closure: Tier-2 UVM Environment
 
 | | |
 |---|---|
-| **Objective** | Turn the growing test collection into a real regression with coverage. |
-| **Files** | `tb/cocotb/env/scoreboard.py`, `tb/cocotb/env/coverage.py`, full `tb/cocotb/tests/` |
-| **Work** | End-of-test drain checking; functional coverage model (hit/miss per level, eviction dirty/clean, PLRU way selection, backpressure patterns, reset-mid-operation); regression runner |
-| **Tests** | All scenarios listed in `01_requirements.md` §8 |
-| **Done when** | Single `make regress` runs the full suite on a clean machine; **measured** functional coverage reported against closure criteria stated in advance; no test passes by absence of checking |
+| **Objective** | Build the comprehensive, constrained-random, coverage-driven UVM environment (VR-05..VR-11), matching the structure of this portfolio's `APB_Design_and_Verification` project. |
+| **Files** | `tb_uvm/transaction.sv`, `sequence.sv`, `sequencer.sv`, `driver.sv`, `monitor.sv`, `agent.sv`, `scoreboard.sv`, `env.sv`, `config.sv`, `test.sv`, `tb_top_uvm.sv`, `tb_uvm/README.md` |
+| **Work** | `uvm_sequence_item` transaction(s) with `rand`/`constraint` fields (VR-06); sequences for cold-miss, repeated-hit, conflict-thrash, dirty/clean eviction, bounded PLRU-exhaustive, and constrained-random mixed traffic (VR-07); a scoreboard driven by a SystemVerilog predictor model of cache state (VR-08); functional coverage groups for hit/miss, eviction dirty/clean, PLRU way selected, backpressure patterns at both interfaces (VR-09) |
+| **This repo's Definition of Done** | The environment is structurally complete (every file above exists, compiles conceptually against the standard IEEE 1800.2 UVM API, matches the `APB_Design_and_Verification` file layout), and `tb_uvm/README.md` states the exact external invocation (`make uvm SIMULATOR=<tool>`, OQ-5). **The regression's actual pass/fail result and coverage numbers are explicitly NOT part of this phase's local Definition of Done** — per D-013/VR-10, they cannot be produced without a class-capable simulator this machine does not have. They are recorded, with the log checked in, only once the user runs the environment externally. |
 
 ---
 
@@ -147,7 +173,7 @@ it is complete when its acceptance criteria have been *executed* and the results
 | **Objective** | Static proof of properties simulation can only sample, to the extent the installed toolchain allows. |
 | **Files** | `assertions/*.sv`, `formal/*.sby` |
 | **Work** | AXI4 protocol SVA; FSM reachability; PLRU tree invariant (never selects an invalid way when a valid one exists in the set) |
-| **Done when** | Each property is either **proved** (solver output checked in) or **explicitly documented as not attempted / not proved, with the reason** — per `vlsi-toolchain-reality`, Verilator and SymbiYosys are not installed on this machine today, so this phase's default outcome is "documented as not run" unless those tools are installed first. No property is reported as proved without a checked-in result. |
+| **Done when** | Each property is either **proved** (solver output checked in) or **explicitly documented as not attempted / not proved, with the reason** — Verilator and SymbiYosys are not installed on this machine today, so this phase's default outcome is "documented as not run" unless those tools are installed first. |
 
 ---
 
@@ -156,9 +182,9 @@ it is complete when its acceptance criteria have been *executed* and the results
 | | |
 |---|---|
 | **Objective** | Real gate-level results on Sky130HD. |
-| **Files** | `synthesis/scripts/synth.ys`, `synthesis/reports/` |
-| **Work** | Yosys flow targeting `sky130hd_tt.lib` (present on this machine at `/home/abhi/Documents/VLSI/OpenROAD/test/sky130hd/`); zero inferred latches/tri-states; area and cell reports per configuration |
-| **Done when** | Synthesis completes with zero errors and zero latch inferences for the default configuration and for each point in the capacity/associativity sweep (PM-xx); reports checked in; **measured** area and cell counts recorded |
+| **Files** | `scripts/synth.ys`, `build/reports/` |
+| **Work** | Yosys flow targeting `sky130hd_tt.lib` (copied into `sky130hd/` per the repo-structure decision above); zero inferred latches/tri-states; area and cell reports per configuration |
+| **Done when** | Synthesis completes with zero errors and zero latch inferences for the default configuration and for each point in the capacity/associativity sweep; reports checked in; **measured** area and cell counts recorded (`make synth`) |
 
 ---
 
@@ -167,13 +193,24 @@ it is complete when its acceptance criteria have been *executed* and the results
 | | |
 |---|---|
 | **Objective** | Know the critical path, not guess it. |
-| **Files** | `constraints/*.sdc`, `sta/scripts/sta.tcl`, `sta/reports/` |
+| **Files** | `constraints/*.sdc`, `scripts/sta.tcl`, `build/reports/timing.txt`, `power_report.txt` |
 | **Work** | SDC with clock and I/O delays; OpenSTA setup/hold against `sky130hd_tt.lib`; Fmax by constraint sweep |
-| **Done when** | Worst slack, critical path and logic depth reported from checked-in report files for each configuration; the tag-compare critical-path prediction from `03_microarchitecture.md` compared against measurement and any discrepancy explained |
+| **Done when** | Worst slack, critical path and logic depth reported from checked-in report files (`make sta`) for each configuration; the tag-compare critical-path prediction from `03_microarchitecture.md` §5 compared against measurement and any discrepancy explained |
 
 ---
 
-### PHASE 9 — PPA Sweep
+### PHASE 9 — Place and Route (OpenROAD)
+
+| | |
+|---|---|
+| **Objective** | Carry the synthesized netlist through a real physical implementation on Sky130HD (PD-01..PD-05, D-014). |
+| **Files** | `scripts/pnr_flow.tcl`, `scripts/floorplan.tcl`, `config/floorplan.tcl`, `config/platform.tcl`, `pnr_results/` |
+| **Work** | Floorplan, PDN generation, global placement, detailed placement, detailed routing, extraction, via OpenROAD (confirmed installed and runnable, `v2.0-25346-gc62be3f952`) |
+| **Done when** | `make pnr` completes with a legal, DRC-clean routed design **on the L1 instance first** (PD-03's staged approach), with results checked into `pnr_results/`; the full hierarchy attempted next, with runtime and any congestion/DRC issues reported honestly if full-size P&R does not close (OQ-6) rather than silently substituting the smaller result |
+
+---
+
+### PHASE 10 — PPA Sweep
 
 | | |
 |---|---|
@@ -184,34 +221,39 @@ it is complete when its acceptance criteria have been *executed* and the results
 
 ---
 
-### PHASE 10 — Final Integration and Regression
+### PHASE 11 — Final Integration and Regression
 
 | | |
 |---|---|
-| **Objective** | Everything green simultaneously, from a clean clone. |
-| **Done when** | Fresh clone -> `make regress`, `make synth`, `make sta` all succeed on a machine with only the open-source toolchain listed in §5; no stale reports; no requirement left un-traced |
+| **Objective** | Everything this repository can itself run is green simultaneously, from a clean clone. |
+| **Done when** | Fresh clone -> `make sim`, `make synth`, `make sta`, `make pnr` all succeed with only the toolchain listed in §5; `tb_uvm/` is present, documented, and its external invocation is a copy-paste away; no stale reports; no requirement left un-traced |
 
 ---
 
-### PHASE 11 — Documentation and Portfolio Packaging
+### PHASE 12 — Documentation and Portfolio Packaging
 
 | | |
 |---|---|
 | **Objective** | Make the work legible to a reviewer in ten minutes. |
-| **Done when** | Every number in the README cites a report file or is labelled **NOT YET MEASURED**; build/simulate/synthesize instructions verified by following them literally on a clean checkout |
+| **Done when** | Every number in the README cites a report file or is labelled **NOT YET MEASURED** (locally-runnable figures) or **NOT YET RUN (external simulator required)** (the UVM tier), never conflated; build/simulate/synthesize/PnR instructions verified by following them literally on a clean checkout |
 
 ---
 
 ## 3. Cross-Phase Rules
 
 1. **No number without provenance.** Any figure in any document either cites a checked-in report
-   file or carries the label **NOT YET MEASURED**. Applies retroactively to earlier documents.
-2. **No phase closes on inspection.** Acceptance criteria are executed, and their output recorded.
+   file or carries the label **NOT YET MEASURED** / **NOT YET RUN (external simulator required)**
+   as appropriate (`01_requirements.md` §12, DR-03). Applies retroactively to earlier documents.
+2. **No phase closes on inspection.** Acceptance criteria are executed, and their output recorded
+   — except where a phase's own Definition of Done explicitly scopes execution to outside this
+   session (Phase 5's UVM tier), in which case "done" means "correctly written and documented,"
+   stated as such, never quietly reinterpreted as "passing."
 3. **Architecture changes are documented before they are implemented.** Sequence: log the reason
    -> update `02_architecture.md` -> update affected documents -> then change RTL.
-4. **The engineering log is updated in the phase the decision is made**, not reconstructed later.
-5. **Failed experiments are kept.** A documented failed optimization is evidence of engineering
-   judgement, not something to hide.
+4. **The engineering log is updated in the phase the decision is made**, not reconstructed later
+   — including mid-review revisions, as D-013/D-014 demonstrate.
+5. **Failed experiments are kept.** A documented failed optimization or a P&R run that doesn't
+   close is evidence of engineering judgement, not something to hide.
 
 ---
 
@@ -219,35 +261,40 @@ it is complete when its acceptance criteria have been *executed* and the results
 
 | # | Risk | Impact | Likelihood | Mitigation |
 |---|---|---|---|---|
-| R1 | Blocking-miss decision (D-004) understates real cache performance behavior a reviewer might expect | Portfolio piece reads as "textbook" rather than "high-performance" | Medium | README states the blocking-miss scope explicitly as a deliberate v1 boundary, with non-blocking/MSHR called out as a named, scoped stretch phase — not hidden |
-| R2 | Icarus 12 has no classes/covergroups/concurrent SVA (`vlsi-toolchain-reality`) | UVM-style verification physically cannot run | **Confirmed, active** | cocotb-based verification from Phase 1 onward; SVA/formal isolated to Phase 6 and explicitly marked toolchain-limited |
-| R3 | L2<->L3 line-size adapter (2:1 ratio) has an off-by-one or ordering bug in the beat sequencer | Silent data corruption on lines that cross the adapter | Medium | Phase 3 DoD requires an exhaustive directed test of both split (L3->L2) and merge (L2->L3) directions before integration |
-| R4 | Direct-mapped L1 thrashes badly on adversarial (conflicting) access patterns in the integration regression, making the regression's effective coverage of L2/L3 miss paths low | Weak measured evidence for L2/L3 logic | Medium | Phase 4 test plan includes a directed address pattern designed to force L1 conflict misses on every access, specifically to drive traffic into L2/L3 |
-| R5 | Yosys+ABC synthesis runtime at 8-way/512-set L3 (the largest tag/PLRU array) is slow | PPA sweep truncated | Medium | Bring the flow up on L1 (smallest) first; scale up recording runtime at each step, as done in prior portfolio IP for the `MAC_UNITS` sweep |
-| R6 | Scope creep toward non-blocking misses or coherency mid-project | Project never reaches synthesis/STA | Medium | D-001/D-004 fix these out of v1 scope in the engineering log; any revisit requires a new logged decision, not a quiet expansion |
+| R1 | Blocking-miss decision (D-004) understates real cache performance behavior a reviewer might expect | Portfolio piece reads as "textbook" rather than "high-performance" | Medium | README states the blocking-miss scope explicitly as a deliberate v1 boundary; non-blocking/MSHR named as a future phase |
+| R2 | The Tier-2 UVM regression's pass/fail result depends entirely on the user running it on an external simulator (D-013) | The comprehensive, "maximum coverage" verification this project's owner explicitly asked for may never actually be executed and checked in | **Confirmed, active** | Tier 1 (plain-Verilog smoke, this repo) guarantees the project is never left with zero locally-verified evidence; `tb_uvm/README.md` gives the exact external command so running it is a copy-paste; every UVM figure stays labelled NOT YET RUN until it happens |
+| R3 | L2<->L3 line-size adapter (2:1 ratio) has an off-by-one or ordering bug in the beat sequencer | Silent data corruption on lines that cross the adapter | Medium | Phase 3 DoD requires an exhaustive directed test of both split and merge directions |
+| R4 | Direct-mapped L1 thrashes badly on adversarial access patterns in the integration regression, understating L2/L3 test coverage | Weak measured evidence for L2/L3 logic at Tier 1 | Medium | Phase 4 Tier-1 regression includes a directed pattern designed to force L1 conflict misses specifically to drive traffic into L2/L3 |
+| R5 | Yosys+ABC synthesis runtime at 8-way/512-set L3 (the largest tag/PLRU array) is slow | PPA sweep truncated | Medium | Bring the flow up on L1 (smallest) first; scale up recording runtime at each step |
+| R6 | Scope creep toward non-blocking misses or coherency mid-project | Project never reaches synthesis/STA/PnR | Medium | D-001/D-004 fix these out of v1 scope; any revisit requires a new logged decision |
+| R7 | OpenROAD P&R (Phase 9) does not close cleanly at full hierarchy size — congestion, routing runtime, or DRC violations on the largest (L3) tag/PLRU array | PnR deliverable incomplete at full size | Medium, **not yet known either way** | PD-03: attempt P&R on L1 alone first, scale up; if full-size P&R does not close, report the actual outcome (including which stage failed) rather than substituting a smaller result silently (D-014) |
 
 ---
 
 ## 5. Toolchain — Verified State
 
-Per memory (`vlsi-toolchain-reality`), checked 2026-08-17 on this machine:
-
 | Tool | Status | Version | Use |
 |---|---|---|---|
-| Icarus Verilog | **installed** | 12.0 | Primary simulator |
+| Icarus Verilog | **installed** | 12.0 | Tier-1 smoke-test simulator |
 | Yosys | **installed** | 0.33 | Synthesis |
 | OpenSTA | **installed** | 2.7.0 | Timing analysis |
+| OpenROAD | **installed, verified runnable** | v2.0-25346-gc62be3f952 (`/usr/local/bin/openroad`) | Place and route (Phase 9, D-014) |
 | GTKWave | **installed** | — | Waveform viewing |
-| Python | **installed** | 3.13.9 | Reference model |
-| Sky130HD Liberty (`sky130hd_tt.lib`) | **present** | — | `/home/abhi/Documents/VLSI/OpenROAD/test/sky130hd/` — primary synthesis target |
-| Sky130HD LEF | **present** | — | same directory — available if a P&R step is added later (not in current scope; user asked for synthesis, not full P&R) |
-| cocotb | **not installed** | — | Phase 1 prerequisite (`pip install cocotb`) |
+| Python | **installed** | 3.13.9 | PPA sweep driver / report parsing (not part of Tier-1 verification — see D-013) |
+| Sky130HD Liberty (`sky130hd_tt.lib`) | **present** | — | Copied into `sky130hd/`; primary synthesis/STA/PnR target |
+| Sky130HD LEF | **present** | — | Copied into `sky130hd/`; used by Phase 9 P&R |
+| A class-capable SystemVerilog simulator (VCS / Questa / Xcelium) | **not installed** | — | Required only for the Tier-2 UVM environment (`tb_uvm/`), supplied externally by the user (D-013) |
+| UVM library (IEEE 1800.2 / Accellera UVM 1.2) | **not installed** | — | Bundled with, or supplied alongside, whichever external simulator runs `tb_uvm/` |
 | Verilator | **not installed** | — | Phase 6 prerequisite |
-| SymbiYosys + solver | **not installed** | — | Phase 6 prerequisite (risk R2 in this doc corresponds to `vlsi-toolchain-reality` memory) |
+| SymbiYosys + solver | **not installed** | — | Phase 6 prerequisite |
 
-**Notable constraint (unchanged from prior portfolio IP):** Icarus 12 supports no classes, no
-`randomize()`, no covergroups and no concurrent SVA — a UVM testbench cannot run here. This is
-why verification is cocotb-based from Phase 1, not a stylistic preference.
+**Notable constraint, verified directly (not assumed) during spec review (D-013):** attempting to
+compile this portfolio's existing `APB_Design_and_Verification` UVM testbench on this machine
+fails immediately (`Include file uvm_macros.svh not found`) — no UVM library is installed, and
+Icarus 12 has no SystemVerilog class support regardless. This is why verification is split into
+two tiers rather than being UVM-only: Tier 1 (plain Verilog, this repo, Icarus) always runs here;
+Tier 2 (UVM, `tb_uvm/`) is written to the full standard but requires the user's external
+simulator to actually execute.
 
 ---
 
