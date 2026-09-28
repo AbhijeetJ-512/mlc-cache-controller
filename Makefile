@@ -9,7 +9,7 @@ VVP      ?= vvp
 
 SIM_DIR := sim
 
-TESTS := tb_reset_sync
+TESTS := tb_reset_sync tb_l1_dcache
 
 .DEFAULT_GOAL := help
 
@@ -28,6 +28,12 @@ sim: $(addprefix $(SIM_DIR)/,$(TESTS))
 	done'
 
 $(SIM_DIR)/tb_reset_sync: sim/tb_reset_sync.sv rtl/common/reset_sync.sv
+	$(IVERILOG) -g2012 -o $@ $^
+
+# rtl/common/mlc_pkg.sv is listed first: Icarus Verilog 12 requires a package to be compiled
+# before any file that does `import mlc_pkg::*;` at compilation-unit scope (see Task 2 report,
+# Ruling 3) - listing it first here means $^ expands with the package ahead of its importers.
+$(SIM_DIR)/tb_l1_dcache: rtl/common/mlc_pkg.sv sim/tb_l1_dcache.sv sim/l1_downstream_stub.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_dcache_ctrl.sv
 	$(IVERILOG) -g2012 -o $@ $^
 
 .PHONY: clean
