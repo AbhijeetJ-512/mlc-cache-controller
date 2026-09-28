@@ -212,6 +212,32 @@ module tb_l1_dcache;
       check(req_ready === 1'b1, "req_ready is high again after reset mid-fill");
     end
 
+    begin
+      logic [DATA_W-1:0] rd;
+      // 0x80 was invalidated by Step 28's full reset (clears the entire valid_array, not just
+      // the line being filled) - re-install it here before reusing it as a hit.
+      cpu_read(32'h0000_0080, rd);
+      check(rd === expected_word(32'h0000_0080), "address 0x80 re-installed after Step 28's reset");
+
+      hold_not_ready = 1'b1;
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b1; req_addr <= 32'h0000_0080;
+      req_wdata <= 32'h1111_2222; req_wstrb <= 4'b1111; resp_ready <= 1'b1;
+      wait (req_ready);
+      @(posedge clk);
+      req_valid <= 1'b0;
+      @(posedge clk);
+      check(dut.u_core.wr_fwd_pending === 1'b1, "write-forward is pending before reset");
+      rst_n <= 1'b0;
+      repeat (2) @(posedge clk);
+      rst_n <= 1'b1;
+      hold_not_ready <= 1'b0;
+      @(posedge clk); #1;
+      check(dut.u_core.wr_fwd_pending === 1'b0,
+            "write-forward skid register clears on reset (CR-03), not left dangling");
+      check(req_ready === 1'b1, "req_ready is high again after reset clears a pending forward");
+    end
+
     if (errors == 0) $display("** ALL TESTS PASSED **");
     else $display("** %0d TEST(S) FAILED **", errors);
     $finish;
