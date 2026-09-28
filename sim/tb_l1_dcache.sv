@@ -1,0 +1,97 @@
+`timescale 1ns/1ps
+import mlc_pkg::*;
+
+module tb_l1_dcache;
+
+  logic clk = 1'b0;
+  always #5 clk = ~clk;
+  logic rst_n;
+
+  logic                      req_valid, req_ready, req_we, resp_valid, resp_ready;
+  logic [ADDR_W-1:0]         req_addr;
+  logic [DATA_W-1:0]         req_wdata, resp_rdata;
+  logic [BYTES_PER_WORD-1:0] req_wstrb;
+
+  logic                      dn_req_valid, dn_req_ready, dn_req_we, dn_resp_valid, dn_resp_ready;
+  logic [ADDR_W-1:0]         dn_req_addr;
+  logic [DATA_W-1:0]         dn_req_wdata;
+  logic [BYTES_PER_WORD-1:0] dn_req_wstrb;
+  logic [L1_LINE_W-1:0]      dn_resp_line;
+  logic                      hold_not_ready = 1'b0;
+
+  int errors = 0;
+
+  l1_dcache_ctrl dut (.*);
+
+  l1_downstream_stub #(.FILL_LATENCY(3)) l2_stub (
+    .clk(clk), .rst_n(rst_n), .hold_not_ready(hold_not_ready),
+    .req_valid(dn_req_valid), .req_ready(dn_req_ready),
+    .req_addr(dn_req_addr), .req_we(dn_req_we),
+    .req_wdata(dn_req_wdata), .req_wstrb(dn_req_wstrb),
+    .resp_valid(dn_resp_valid), .resp_ready(dn_resp_ready),
+    .resp_line(dn_resp_line)
+  );
+
+  // Matches l1_downstream_stub's line_pattern: word w of the line containing
+  // `addr` equals (line-base address of addr) + w.
+  function automatic logic [DATA_W-1:0] expected_word(input logic [ADDR_W-1:0] addr);
+    logic [ADDR_W-1:0] line_base;
+    int word_idx;
+    line_base = addr & ~(L1_LINE_B - 1);
+    word_idx  = (addr - line_base) >> 2;
+    expected_word = line_base + word_idx;
+  endfunction
+
+  task automatic cpu_read(input logic [ADDR_W-1:0] addr, output logic [DATA_W-1:0] rdata);
+    @(posedge clk);
+    req_valid  <= 1'b1; req_we <= 1'b0; req_addr <= addr;
+    resp_ready <= 1'b1;
+    wait (req_ready);
+    @(posedge clk);
+    req_valid <= 1'b0;
+    wait (resp_valid);
+    rdata = resp_rdata;
+    @(posedge clk);
+  endtask
+
+  task automatic cpu_write(input logic [ADDR_W-1:0] addr, input logic [DATA_W-1:0] wdata,
+                            input logic [BYTES_PER_WORD-1:0] wstrb);
+    @(posedge clk);
+    req_valid  <= 1'b1; req_we <= 1'b1; req_addr <= addr;
+    req_wdata  <= wdata; req_wstrb <= wstrb;
+    resp_ready <= 1'b1;
+    wait (req_ready);
+    @(posedge clk);
+    req_valid <= 1'b0;
+    wait (resp_valid);
+    @(posedge clk);
+  endtask
+
+  task automatic check(input logic cond, input string msg);
+    if (cond) $display("PASS: %s", msg);
+    else begin
+      $display("FAIL: %s", msg);
+      errors++;
+    end
+  endtask
+
+  initial begin
+    req_valid = 0; req_we = 0; req_addr = 0; req_wdata = 0; req_wstrb = 0; resp_ready = 0;
+    rst_n = 0;
+    repeat (3) @(posedge clk);
+    rst_n = 1;
+    @(posedge clk);
+
+    check(req_ready === 1'b1, "req_ready is high after reset, before any request");
+
+    begin
+      logic [DATA_W-1:0] rd;
+      cpu_read(32'h0000_0000, rd);
+      check(rd === expected_word(32'h0000_0000), "cold-miss read returns the fetched data");
+    end
+
+    if (errors == 0) $display("** ALL TESTS PASSED **");
+    else $display("** %0d TEST(S) FAILED **", errors);
+    $finish;
+  end
+endmodule
