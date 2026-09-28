@@ -311,7 +311,7 @@ liberty file already used for synthesis/STA.
 
 | # | Question | Owner | Resolve by |
 |---|---|---|---|
-| OQ-1 | Should the L1<->L2 link reuse the same valid/ready request/response shape as the CPU<->L1 link (uniform interface at every boundary), or should it carry extra fields (e.g. a full-line fill payload) that the CPU-facing port doesn't need? | Design | Phase 1 |
+| ~~OQ-1~~ | ~~Should the L1<->L2 link reuse the same valid/ready shape as CPU<->L1, or carry extra fields?~~ **Resolved:** uniform shape (`04_interfaces.md` §2), plus a 1-entry write-forward skid register in L1 to reconcile PF-01's same-cycle response with L2 not always being ready — see D-015. | Design | **Resolved, D-015** |
 | OQ-2 | Is a single shared victim/write-buffer register enough at L2/L3 (one write-back in flight at a time, consistent with blocking misses), or does the write-back-then-fill sequencing need a dedicated buffer per level? | Design | Phase 2 |
 | OQ-3 | Should the AXI4 fill engine support outstanding-transaction pipelining (issuing the next AR before the previous R burst completes), or is one AXI4 transaction at a time sufficient given blocking misses already serialize at L3? | Design | Phase 3 |
 | OQ-4 | Will Yosys elaboration/synthesis runtime for the L3 configuration (8-way, 512 sets, widest tag/PLRU array) be tractable on this machine? | Impl | Phase 7 |

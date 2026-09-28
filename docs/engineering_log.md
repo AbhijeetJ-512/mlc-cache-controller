@@ -497,5 +497,57 @@ synthesis sweep (Phase 9).
 
 ---
 
+## D-015 — L1 write-through forward: how a same-cycle hit response coexists with a not-yet-ready L2
+
+**2026-09-29 · Phase 1 planning (resolves OQ-1)**
+
+**Problem.** FR-08 requires a write hit at L1 to forward to L2 "in the same operation" as the
+local array update, and PF-01 requires L1's response to the CPU to complete in the *same cycle*
+the request is accepted, at every level, unconditionally. Neither requirement says what happens
+if L2's downstream `req_ready` happens to be low that same cycle (e.g., L2 is mid-fill from an
+unrelated miss). Coupling L1's CPU-facing `req_ready` directly to L2's readiness would make every
+L1 write (and, if not careful, every access) vulnerable to stalling on L2 state, which is exactly
+the coupling D-003 chose write-through specifically to avoid at the fastest level. This was left
+open as OQ-1 ("Resolve by: Phase 1").
+
+**Options considered.**
+
+1. *Gate L1's `req_ready` directly on L2's downstream `req_ready` for writes.* Simple, but
+   reintroduces the cross-level latency dependency D-003 was chosen to avoid.
+2. *A 1-entry write-forward skid register.* On a write hit, update the L1 array and respond to
+   the CPU the same cycle regardless of L2's state (PF-01 satisfied unconditionally); latch the
+   write into a single pending-forward register and keep presenting it to L2 until L2's
+   `req_ready` accepts it. While that register holds an unaccepted forward, L1's CPU-facing
+   `req_ready` drops (reusing the same signal FR-05 already drops during a miss-fill) — a second
+   write cannot be accepted until the first has actually left for L2.
+3. *An N-deep write-forward FIFO (N>1).* Absorbs more back-to-back writes without stalling, at
+   the cost of more state and a more complex full/empty/ordering story for a v1 controller.
+
+**Decision.** Option 2 — a 1-entry write-forward skid register.
+
+**Reason.** This keeps the common case (L2 ready) exactly as simple as if the register didn't
+exist — the forward leaves the same cycle, the register is never actually occupied for more than
+an instant. It only engages on the genuinely rare case (L2 busy with an unrelated fill) and does
+so with the smallest possible amount of new state: one address+data+control register and one
+valid bit, no FIFO pointer logic. It also reuses an existing signal (`req_ready` dropping) rather
+than inventing a second kind of backpressure, so from the CPU's point of view a pending write
+forward and an active fill look identical: "L1 is momentarily busy," which is honest — in both
+cases L1 genuinely cannot promise a next-cycle response.
+
+**Tradeoffs.** A CPU issuing two writes back-to-back where the first hits and momentarily can't
+forward (L2 busy) sees `req_ready` drop for exactly as long as L2 stays busy, even though the
+*local* L1 array update for that first write already completed — a write that is fully committed
+locally can still block the *next* request. This is a real, bounded latency cost, accepted because
+it only ever affects back-to-back writes racing an unrelated L2 fill (not reads, not isolated
+writes), and Option 3's FIFO would trade a rare, bounded stall for permanent extra state on every
+access. VR-03 already required an "indefinite downstream backpressure" test case; this decision
+is exactly what that test now exercises the skid register against.
+
+**Result.** L1 controller design (Task 3/4 of the Phase 1 implementation plan) includes the skid
+register as part of `l1_cache_ctrl.sv`, not as a separate module. `01_requirements.md` OQ-1 marked
+resolved.
+
+---
+
 *Next: user review of the revised spec (`01_requirements.md` through `04_interfaces.md`,
 this log), then `writing-plans` for the Phase 1 implementation plan.*
