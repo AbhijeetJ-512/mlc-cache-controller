@@ -177,6 +177,25 @@ module tb_l1_dcache;
             "back-to-back misses to different sets both resolve correctly");
     end
 
+    begin
+      hold_not_ready = 1'b1;
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b1; req_addr <= 32'h0000_0080;
+      req_wdata <= 32'hFACE_0FF1; req_wstrb <= 4'b1111; resp_ready <= 1'b1;
+      wait (req_ready);
+      @(posedge clk);
+      req_valid <= 1'b0;
+      repeat (5) begin
+        @(posedge clk);
+        check(req_ready === 1'b0, "req_ready stays low while the write-forward cannot drain to L2");
+      end
+      hold_not_ready = 1'b0;
+      @(posedge clk);
+      wait (req_ready);
+      check(1'b1, "req_ready returns once L2 accepts the pending forward");
+      @(posedge clk);
+    end
+
     if (errors == 0) $display("** ALL TESTS PASSED **");
     else $display("** %0d TEST(S) FAILED **", errors);
     $finish;
