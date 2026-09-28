@@ -75,10 +75,10 @@ module l1_cache_ctrl (
     end
   end
 
-  assign req_ready = (state == S_IDLE) && !wr_fwd_pending &&
+  assign req_ready = rst_n && (state == S_IDLE) && !wr_fwd_pending &&
                       (!req_valid || !is_hit || resp_ready);
 
-  assign resp_valid = (state == S_UPDATE_TAG) || (state == S_IDLE && req_valid && is_hit);
+  assign resp_valid = (state == S_UPDATE_TAG) || (state == S_IDLE && req_valid && req_ready && is_hit);
 
   always_comb begin
     if (state == S_UPDATE_TAG) resp_rdata = data_array[miss_index][miss_word_sel*DATA_W +: DATA_W];
@@ -108,6 +108,9 @@ module l1_cache_ctrl (
       state          <= S_IDLE;
       wr_fwd_pending <= 1'b0;
       for (int i = 0; i < L1_SETS; i++) valid_array[i] <= 1'b0;
+      // tag_array/data_array and the skid register's payload fields (wr_fwd_addr/wdata/wstrb)
+      // are intentionally not reset - their contents are don't-care until validated by their
+      // respective valid/pending bit, per FR-06.
     end else begin
 
       if (wr_fwd_pending) begin
