@@ -196,6 +196,22 @@ module tb_l1_dcache;
       @(posedge clk);
     end
 
+    begin
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b0; req_addr <= 32'h0000_00E0; resp_ready <= 1'b1;
+      wait (req_ready);
+      @(posedge clk);
+      req_valid <= 1'b0;
+      @(posedge clk); // now inside S_ALLOC_FILL
+      check(dut.u_core.state === dut.u_core.S_ALLOC_FILL, "confirmed mid-fill before reset");
+      rst_n <= 1'b0;
+      repeat (2) @(posedge clk);
+      rst_n <= 1'b1;
+      @(posedge clk); #1;
+      check(dut.u_core.state === dut.u_core.S_IDLE, "controller returns to IDLE after reset mid-fill");
+      check(req_ready === 1'b1, "req_ready is high again after reset mid-fill");
+    end
+
     if (errors == 0) $display("** ALL TESTS PASSED **");
     else $display("** %0d TEST(S) FAILED **", errors);
     $finish;
