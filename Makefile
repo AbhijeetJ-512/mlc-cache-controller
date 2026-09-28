@@ -16,7 +16,12 @@ TESTS := tb_reset_sync tb_l1_dcache tb_l1_icache
 .PHONY: help
 help:
 	@echo "make sim   - run all Tier-1 module-level smoke tests (Icarus)"
+	@echo "make lint  - Yosys elaboration check: hierarchy + zero-latch/tristate (no synthesis)"
 	@echo "make clean - remove simulation build artefacts"
+
+.PHONY: lint
+lint:
+	yosys -q scripts/lint.ys
 
 .PHONY: sim
 sim: $(addprefix $(SIM_DIR)/,$(TESTS))

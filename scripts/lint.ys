@@ -1,0 +1,27 @@
+# Elaboration-only check: hierarchy + latch/tristate detection.
+# Does NOT perform technology mapping - see scripts/synth.ys (Phase 7) for that.
+#
+# Each top gets its own `design -reset` first. `hierarchy -top <mod>` prunes
+# every module unreachable from that top, so checking l1_icache_ctrl and
+# l1_dcache_ctrl in one continuous design state would have the first
+# `hierarchy -top` call delete the second module before its own check ever
+# runs - `design -reset` avoids that by starting each check from a clean,
+# freshly-read design.
+read_verilog -sv rtl/common/mlc_pkg.sv
+read_verilog -sv rtl/common/reset_sync.sv
+read_verilog -sv rtl/l1/l1_cache_ctrl.sv
+read_verilog -sv rtl/l1/l1_icache_ctrl.sv
+hierarchy -top l1_icache_ctrl
+proc
+opt_clean
+check -assert
+
+design -reset
+read_verilog -sv rtl/common/mlc_pkg.sv
+read_verilog -sv rtl/common/reset_sync.sv
+read_verilog -sv rtl/l1/l1_cache_ctrl.sv
+read_verilog -sv rtl/l1/l1_dcache_ctrl.sv
+hierarchy -top l1_dcache_ctrl
+proc
+opt_clean
+check -assert
