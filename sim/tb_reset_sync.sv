@@ -34,8 +34,12 @@ module tb_reset_sync;
     #1;
     check(rst_n === 1'b0, "rst_n drops immediately (asynchronously) on re-assertion");
 
-    if (errors == 0) $display("** ALL TESTS PASSED **");
-    else $display("** %0d TEST(S) FAILED **", errors);
-    $finish;
+    if (errors == 0) begin
+      $display("** ALL TESTS PASSED **");
+      $finish;
+    end else begin
+      $display("** %0d TEST(S) FAILED **", errors);
+      $fatal(1);
+    end
   end
 endmodule
