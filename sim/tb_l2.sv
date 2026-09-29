@@ -116,6 +116,28 @@ module tb_l2;
       check_fwd_empty("a clean cold-miss fill produces no write-back");
     end
 
+    begin
+      logic [LINE_W-1:0] rline;
+      cpu_read(32'h0000_0000, rline);
+      check(rline === expected_line(32'h0000_0000), "repeated hit on address 0 returns the same line");
+    end
+
+    begin
+      logic [LINE_W-1:0] rline;
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b1; req_addr <= 32'h0000_0000;
+      req_wdata <= 32'hDEAD_BEEF; req_wstrb <= 4'b1111; resp_ready <= 1'b1;
+      wait (req_ready);
+      @(posedge clk);
+      req_valid <= 1'b0;
+      wait (resp_valid);
+      @(posedge clk);
+      check_fwd_empty("a write hit never forwards downstream (FR-15, write-back semantics)");
+      cpu_read(32'h0000_0000, rline);
+      check(rline[0 +: mlc_pkg::DATA_W] === 32'hDEAD_BEEF,
+            "write hit then read-back returns the written word (word 0 of the line)");
+    end
+
     if (errors == 0) begin
       $display("** ALL TESTS PASSED **");
       $finish;
