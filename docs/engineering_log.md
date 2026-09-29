@@ -686,6 +686,68 @@ the fill address/data in `l1_cache_ctrl.sv`. `01_requirements.md` OQ-2 marked re
 
 ---
 
+## D-019 — L2/L3 array elaboration: separate the reset-free arrays into their own always_ff
+
+**2026-09-30 · Phase 2 planning**
+
+**Problem.** D-017 fixed L1's Yosys elaboration slowness by single-indexing `data_array`'s
+accesses (128 entries x 256 bits). L2's arrays are 4x larger by entry count (256 sets x 4 ways =
+1024 entries) before even counting `tag_array`/`dirty_array` alongside `data_array`. Checked
+directly before writing any L2 RTL, not assumed safe by extrapolation: a single-indexed,
+D-017-style write at 1024 entries x 256 bits did not finish `proc` alone within 90 seconds —
+D-017's fix was necessary but not sufficient at this scale, so an isolated reproduction was built
+to find the actual bottleneck before committing to a design.
+
+**Investigation.** Both `data_array` (single-indexed write, no reset) and `valid_array`
+(reset-cleared via a for-loop) print Yosys's "Replacing memory X with list of registers" warning
+when declared and written from within the same clocked process as a reset-cleared signal — even
+though `data_array` itself carries no reset logic. `proc` alone, not `opt_clean` or `check`, is
+where the time is spent once an array is flattened this way; the flattening itself, not any
+downstream pass, is what scales badly with entry count.
+
+**Options considered.**
+
+1. *Accept the slow elaboration time* (tens of minutes) as a one-time Phase-2 cost.
+2. *Separate the reset-free arrays into their own `always_ff @(posedge clk)` block* (no
+   `or negedge rst_n)`, no reset branch at all), so nothing in that process's syntax disqualifies
+   Yosys's automatic memory-inference pattern-match, keeping `data_array`/`tag_array`/
+   `dirty_array` as compact `$mem` cells instead of N-way flattened registers. `valid_array` (the
+   only array FR-06 actually requires to reach a defined value on reset) stays in its own
+   `always_ff @(posedge clk or negedge rst_n)` block, small enough (1 bit x SETS x WAYS) that
+   flattening it to registers is cheap regardless.
+
+**Decision.** Option 2. Verified directly: the same 1024-entry x 256-bit array, moved to its own
+reset-free `always_ff`, completes the full `proc`/`opt_clean`/`check -assert`/`stat` pipeline in
+~0.5 seconds — no "Replacing memory" warning for that array at all, confirming it stayed a real
+`$mem` cell. `valid_array`, kept in the separate reset-bearing block, still gets flattened (as
+expected — 1024 x 1 bit is cheap to flatten) but no longer drags every other array's writes into
+the same expensive path.
+
+**Reason.** FR-06 already establishes that tag, data, and dirty-bit contents are don't-care until
+a line is validated by a fill — nothing in the spec requires these arrays to reach any defined
+value on reset, only that they never be trusted before their line's valid bit says so. Giving them
+their own reset-free process is therefore not a compromise of anything FR-06 promises; it is
+simply not paying for a guarantee (a defined reset value) the design never needed, in the one
+place where paying for it was also expensive to elaborate.
+
+**Tradeoffs.** Multiple `always_ff` blocks writing conceptually-related per-line state (tag, dirty,
+data, valid, all committed together on a fill) is a slightly less consolidated read of the code
+than one block doing everything — mitigated by keeping all of a single commit's writes on the
+same clock edge (still synchronous and coherent) and naming the blocks clearly by what they own.
+Whether this materially changes synthesized area or timing versus one combined process is
+**NOT YET MEASURED** (Phase 7) — the fix here is scoped to elaboration/lint tractability, not a
+synthesis optimization claim.
+
+**Result.** `l2_cache_ctrl.sv` (and `l3_cache_ctrl.sv` when Phase 3 reuses it) splits `tag_array`/
+`dirty_array`/`data_array` writes into one reset-free `always_ff @(posedge clk)`, and `valid_array`
+plus all scalar FSM/control state into a separate `always_ff @(posedge clk or negedge rst_n)`.
+This supersedes D-017's guidance for any array whose entry count materially exceeds L1's — D-017's
+single-indexing fix still applies within each array access, but is no longer sufficient on its
+own at L2/L3 scale without this separation too.
+
+---
+
 *Phase 1 (L1 controllers) is complete; D-015 through D-017 were recorded during it. Phase 2 (L2
-controller, standalone) begins with D-018 above, applying D-016/D-017's Yosys-compatibility
-lessons from the start rather than rediscovering them.*
+controller, standalone) begins with D-018/D-019 above, applying every Yosys-compatibility lesson
+from Phase 1 (D-016, D-017) plus the two found here from the start, rather than rediscovering
+them.*
