@@ -246,6 +246,26 @@ module tb_l2;
     rst_n <= 1'b1;
     @(posedge clk);
 
+    begin
+      logic [LINE_W-1:0] rline;
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b0; req_addr <= 32'h0000_0060; // fresh set (index 3)
+      resp_ready <= 1'b0;
+      wait (req_ready);
+      @(posedge clk);
+      req_valid <= 1'b0;
+      wait (dut.state === dut.S_UPDATE_TAG);
+      repeat (4) begin
+        @(posedge clk); #1;
+        check(dut.state === dut.S_UPDATE_TAG, "miss completion stays in S_UPDATE_TAG while resp_ready is low");
+        check(resp_valid === 1'b1 && resp_line === expected_line(32'h0000_0060),
+              "miss response is held (resp_valid high, correct line) while resp_ready is low");
+      end
+      resp_ready <= 1'b1;
+      @(posedge clk); #1;
+      check(dut.state === dut.S_IDLE, "S_UPDATE_TAG advances to S_IDLE once resp_ready is asserted");
+    end
+
     if (errors == 0) begin
       $display("** ALL TESTS PASSED **");
       $finish;
