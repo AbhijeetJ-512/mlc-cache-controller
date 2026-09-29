@@ -6,3 +6,7 @@ sim/*.vcd
 
 # VCD waveform dumps (not logs)
 *.vcd
+
+# Icarus default output of a bare `iverilog` run without -o, and any vvp image
+a.out
+*.vvp
