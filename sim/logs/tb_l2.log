@@ -1,0 +1,52 @@
+PASS: req_ready is high after reset, before any request
+PASS: cold-miss read returns the fetched line
+PASS: a clean cold-miss fill produces no write-back
+PASS: repeated hit on address 0 returns the same line
+PASS: a write hit never forwards downstream (FR-15, write-back semantics)
+PASS: write hit then read-back returns the written word (word 0 of the line)
+PASS: set 0's 2nd distinct tag installs correctly
+PASS: set 0's 3rd distinct tag installs correctly
+PASS: set 0's 4th distinct tag installs correctly (all 4 ways now occupied)
+PASS: set 0, 5th access installs correctly
+PASS: traced-through eviction (way0) writes back its dirty content exactly
+PASS: the evicted address (0x0000) misses again and re-fetches L3's pristine pattern
+PASS: 0x2000 (way2, per the trace above) is still resident - untouched by the eviction
+PASS: 0x4000 (way1, per the trace above) is still resident - untouched by the eviction
+PASS: clean-victim eviction installs the new line correctly
+PASS: evicting a clean victim produces zero write-backs
+PASS: write-allocate does not forward downstream immediately (write-back semantics)
+PASS: write-allocate merged the write into the fetched line correctly
+PASS: write-allocate left word 1 of the fetched line unmodified
+PASS: write-allocate left word 2 of the fetched line unmodified
+PASS: write-allocate left word 3 of the fetched line unmodified
+PASS: write-allocate left word 4 of the fetched line unmodified
+PASS: write-allocate left word 5 of the fetched line unmodified
+PASS: write-allocate left word 6 of the fetched line unmodified
+PASS: write-allocate left word 7 of the fetched line unmodified
+PASS: address 0x80 installed fresh for the resp_ready regression
+PASS: req_ready drops on a would-be hit while resp_ready is low
+PASS: resp_valid does not fire while the request has not been accepted
+PASS: req_ready drops on a would-be hit while resp_ready is low
+PASS: resp_valid does not fire while the request has not been accepted
+PASS: req_ready drops on a would-be hit while resp_ready is low
+PASS: resp_valid does not fire while the request has not been accepted
+PASS: req_ready drops on a would-be hit while resp_ready is low
+PASS: resp_valid does not fire while the request has not been accepted
+PASS: delayed resp_ready still yields the correct hit data once accepted
+PASS: req_ready is held low while rst_n is asserted
+PASS: miss completion stays in S_UPDATE_TAG while resp_ready is low
+PASS: miss response is held (resp_valid high, correct line) while resp_ready is low
+PASS: miss completion stays in S_UPDATE_TAG while resp_ready is low
+PASS: miss response is held (resp_valid high, correct line) while resp_ready is low
+PASS: miss completion stays in S_UPDATE_TAG while resp_ready is low
+PASS: miss response is held (resp_valid high, correct line) while resp_ready is low
+PASS: miss completion stays in S_UPDATE_TAG while resp_ready is low
+PASS: miss response is held (resp_valid high, correct line) while resp_ready is low
+PASS: S_UPDATE_TAG advances to S_IDLE once resp_ready is asserted
+PASS: the 6th access to set 0 reaches S_EVICT_WRITEBACK (dirty victim, per the writes above)
+PASS: controller returns to IDLE after reset mid-eviction
+PASS: req_ready is high again after reset mid-eviction
+PASS: controller returns to IDLE after reset mid-fill
+PASS: req_ready is high again after reset mid-fill
+** ALL TESTS PASSED **
+sim/tb_l2.sv:328: $finish called at 2446000 (1ps)
