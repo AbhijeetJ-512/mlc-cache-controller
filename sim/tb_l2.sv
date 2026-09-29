@@ -215,6 +215,28 @@ module tb_l2;
       end
     end
 
+    begin
+      logic [LINE_W-1:0] rline;
+      cpu_read(32'h0000_0080, rline);
+      check(rline === expected_line(32'h0000_0080), "address 0x80 installed fresh for the resp_ready regression");
+
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b0; req_addr <= 32'h0000_0080; resp_ready <= 1'b0;
+      repeat (4) begin
+        @(posedge clk);
+        check(req_ready === 1'b0, "req_ready drops on a would-be hit while resp_ready is low");
+        check(resp_valid === 1'b0, "resp_valid does not fire while the request has not been accepted");
+      end
+      resp_ready <= 1'b1;
+      @(posedge clk);
+      wait (resp_valid);
+      rline = resp_line;
+      check(rline === expected_line(32'h0000_0080),
+            "delayed resp_ready still yields the correct hit data once accepted");
+      req_valid <= 1'b0;
+      @(posedge clk);
+    end
+
     if (errors == 0) begin
       $display("** ALL TESTS PASSED **");
       $finish;
