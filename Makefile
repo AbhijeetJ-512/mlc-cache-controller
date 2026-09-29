@@ -10,7 +10,7 @@ VVP      ?= vvp
 
 SIM_DIR := sim
 
-TESTS := tb_reset_sync tb_l1_dcache tb_l1_icache
+TESTS := tb_reset_sync tb_l1_dcache tb_l1_icache tb_plru
 
 .DEFAULT_GOAL := help
 
@@ -43,6 +43,9 @@ $(SIM_DIR)/tb_l1_dcache: rtl/common/mlc_pkg.sv sim/tb_l1_dcache.sv sim/l1_downst
 	$(IVERILOG) -g2012 -o $@ $^
 
 $(SIM_DIR)/tb_l1_icache: rtl/common/mlc_pkg.sv sim/tb_l1_icache.sv sim/l1_downstream_stub.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_icache_ctrl.sv
+	$(IVERILOG) -g2012 -o $@ $^
+
+$(SIM_DIR)/tb_plru: sim/tb_plru.sv rtl/replace/plru_tree.sv
 	$(IVERILOG) -g2012 -o $@ $^
 
 # sim/logs/*.log are git-tracked VR-04 evidence, overwritten by every `make sim` - `clean` must not
