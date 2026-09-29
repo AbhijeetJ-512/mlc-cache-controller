@@ -138,6 +138,43 @@ module tb_l2;
             "write hit then read-back returns the written word (word 0 of the line)");
     end
 
+    begin
+      logic [LINE_W-1:0] rline;
+      logic [LINE_W-1:0] expected_evicted_line;
+      // 0x0000 is already resident (way0, from earlier). Fill the remaining 3 ways of set 0 -
+      // each installs into whichever way select_victim currently predicts (see the trace above;
+      // do not assume a fixed way0->way1->way2->way3 fill order).
+      cpu_read(32'h0000_2000, rline);
+      check(rline === expected_line(32'h0000_2000), "set 0's 2nd distinct tag installs correctly");
+      cpu_read(32'h0000_4000, rline);
+      check(rline === expected_line(32'h0000_4000), "set 0's 3rd distinct tag installs correctly");
+      cpu_read(32'h0000_6000, rline);
+      check(rline === expected_line(32'h0000_6000), "set 0's 4th distinct tag installs correctly (all 4 ways now occupied)");
+
+      // A 5th access to set 0 (a new tag) evicts the traced-through victim (way0 / address
+      // 0x0000) and must produce exactly one write-back, of exactly its dirty content.
+      cpu_read(32'h0000_8000, rline);
+      check(rline === expected_line(32'h0000_8000), "set 0, 5th access installs correctly");
+
+      expected_evicted_line = expected_line(32'h0000_0000);
+      expected_evicted_line[0 +: mlc_pkg::DATA_W] = 32'hDEAD_BEEF;
+      check_fwd_one(32'h0000_0000, expected_evicted_line,
+                    "traced-through eviction (way0) writes back its dirty content exactly");
+
+      // 0x0000 now misses again (its line was just evicted). l3_stub.sv is a pure function of
+      // address with no memory of the write-back it just absorbed, so the re-fetch returns the
+      // pristine pattern, NOT the DEAD_BEEF-modified content that was written back - the write-
+      // back above proved the dirty data left L2 correctly; it does not mean L3 remembers it.
+      cpu_read(32'h0000_0000, rline);
+      check(rline === expected_line(32'h0000_0000),
+            "the evicted address (0x0000) misses again and re-fetches L3's pristine pattern");
+
+      cpu_read(32'h0000_2000, rline);
+      check(rline === expected_line(32'h0000_2000), "0x2000 (way2, per the trace above) is still resident - untouched by the eviction");
+      cpu_read(32'h0000_4000, rline);
+      check(rline === expected_line(32'h0000_4000), "0x4000 (way1, per the trace above) is still resident - untouched by the eviction");
+    end
+
     if (errors == 0) begin
       $display("** ALL TESTS PASSED **");
       $finish;
