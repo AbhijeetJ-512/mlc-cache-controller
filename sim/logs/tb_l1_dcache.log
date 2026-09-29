@@ -50,5 +50,9 @@ PASS: resp_valid does not fire for a request req_ready never accepted
 PASS: req_ready stays low for W2 while W1's forward is pending
 PASS: resp_valid does not fire for a request req_ready never accepted
 PASS: W2's write never actually landed - value is still pristine
+PASS: 0x60 installed fresh for the word-offset regression
+PASS: write hit at a non-zero word offset updates that word
+PASS: neighboring word (word 2) in the same line is unaffected by a non-zero-offset write
+PASS: word 0 of the same line is unaffected by a non-zero-offset write
 ** ALL TESTS PASSED **
-sim/tb_l1_dcache.sv:334: $finish called at 1835000 (1ps)
+sim/tb_l1_dcache.sv:354: $finish called at 2045000 (1ps)

@@ -40,13 +40,12 @@ module l1_cache_ctrl (
   logic is_hit;
   assign is_hit = valid_array[req_index] && (tag_array[req_index] == req_tag);
 
+  logic [mlc_pkg::ADDR_W-1:0]        miss_addr;
+  logic [mlc_pkg::L1_INDEX_W-1:0]    miss_index;
   logic [mlc_pkg::L1_LINE_W-1:0] req_line_rd;
   logic [mlc_pkg::L1_LINE_W-1:0] miss_line_rd;
   assign req_line_rd  = data_array[req_index];
   assign miss_line_rd = data_array[miss_index];
-
-  logic [mlc_pkg::ADDR_W-1:0]        miss_addr;
-  logic [mlc_pkg::L1_INDEX_W-1:0]    miss_index;
   logic [mlc_pkg::L1_TAG_W-1:0]      miss_tag;
   logic [mlc_pkg::L1_WORD_SEL_W-1:0] miss_word_sel;
   logic                     miss_is_write;
@@ -78,6 +77,8 @@ module l1_cache_ctrl (
     end
   end
 
+  // Mirrors fill_line_merged's pattern for write-hit case: merge write data into one full line for
+  // single-indexed update (no guard needed here: call site in S_IDLE is already gated on req_we).
   logic [mlc_pkg::L1_LINE_W-1:0] hit_write_line_merged;
   always_comb begin
     hit_write_line_merged = req_line_rd;

@@ -190,7 +190,7 @@ module tb_l1_dcache;
     begin
       logic [mlc_pkg::DATA_W-1:0] rd;
       logic saw_miss;
-      // L1_SETS * mlc_pkg::L1_LINE_B = 128 * 32 = 4096 = exactly one alias stride: same index, different tag.
+      // mlc_pkg::L1_SETS * mlc_pkg::L1_LINE_B = 128 * 32 = 4096 = exactly one alias stride: same index, different tag.
       cpu_read(32'h0000_0000, rd);
       check(rd === expected_word(32'h0000_0000), "baseline: original line present before aliasing");
       cpu_read(32'h0000_0000 + (mlc_pkg::L1_SETS * mlc_pkg::L1_LINE_B), rd);
@@ -326,6 +326,27 @@ module tb_l1_dcache;
       // Confirm W2 was genuinely never applied (data must be unchanged, since it was never accepted).
       cpu_read(32'h0000_0020, rd);
       check(rd === expected_word(32'h0000_0020), "W2's write never actually landed - value is still pristine");
+    end
+
+    begin
+      // Regression for Task 4 review: no existing test exercises a non-zero word-select
+      // offset within a line (every prior address was line-aligned, word_sel always 0).
+      // This directly tests the hit_write_line_merged/req_line_rd restructuring (Ruling 10).
+      logic [mlc_pkg::DATA_W-1:0] rd;
+      cpu_read(32'h0000_0060, rd); // (re-)install this line fresh, regardless of prior state
+      check(rd === expected_word(32'h0000_0060), "0x60 installed fresh for the word-offset regression");
+
+      cpu_write(32'h0000_006C, 32'hFEED_1234, 4'b1111); // same line, word_sel=3 (0x60 + 3*4)
+      cpu_read(32'h0000_006C, rd);
+      check(rd === 32'hFEED_1234, "write hit at a non-zero word offset updates that word");
+
+      cpu_read(32'h0000_0068, rd); // word 2 of the same line, must be untouched
+      check(rd === expected_word(32'h0000_0068),
+            "neighboring word (word 2) in the same line is unaffected by a non-zero-offset write");
+
+      cpu_read(32'h0000_0060, rd); // word 0 of the same line, must also be untouched
+      check(rd === expected_word(32'h0000_0060),
+            "word 0 of the same line is unaffected by a non-zero-offset write");
     end
 
     if (errors == 0) begin

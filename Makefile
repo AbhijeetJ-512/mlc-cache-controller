@@ -1,6 +1,7 @@
 # Makefile - mlc_cache_controller build/verification entry points.
-# Phase 1 provides: make sim (Tier-1 module-level smoke tests, Icarus).
-# Later phases add: make lint, make synth, make sta, make pnr, make uvm,
+# Phase 1 provides: make sim (Tier-1 module-level smoke tests, Icarus),
+# make lint (Yosys elaboration check: hierarchy + zero-latch/tristate).
+# Later phases add: make synth, make sta, make pnr, make uvm,
 # make all, make summary, make view - each only once its own scripts exist,
 # per docs/00_project_plan.md's phase-by-phase Definition of Done.
 
@@ -35,9 +36,9 @@ sim: $(addprefix $(SIM_DIR)/,$(TESTS))
 $(SIM_DIR)/tb_reset_sync: sim/tb_reset_sync.sv rtl/common/reset_sync.sv
 	$(IVERILOG) -g2012 -o $@ $^
 
-# rtl/common/mlc_pkg.sv is listed first: Icarus Verilog 12 requires a package to be compiled
-# before any file that does `import mlc_pkg::*;` at compilation-unit scope (see Task 2 report,
-# Ruling 3) - listing it first here means $^ expands with the package ahead of its importers.
+# rtl/common/mlc_pkg.sv is listed first: all downstream files use mlc_pkg::* qualified references,
+# which require the package to be elaborated before any file using those references (see Task 2
+# report, Ruling 3, and Task 4 Ruling 9) - listing it first here ensures package visibility.
 $(SIM_DIR)/tb_l1_dcache: rtl/common/mlc_pkg.sv sim/tb_l1_dcache.sv sim/l1_downstream_stub.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_dcache_ctrl.sv
 	$(IVERILOG) -g2012 -o $@ $^
 

@@ -15,6 +15,9 @@ hierarchy -top l1_icache_ctrl
 proc
 opt_clean
 check -assert
+select -assert-none t:$dlatch t:$adlatch t:$dlatchsr
+tribuf
+select -assert-none t:$tribuf
 
 design -reset
 read_verilog -sv rtl/common/mlc_pkg.sv
@@ -25,3 +28,6 @@ hierarchy -top l1_dcache_ctrl
 proc
 opt_clean
 check -assert
+select -assert-none t:$dlatch t:$adlatch t:$dlatchsr
+tribuf
+select -assert-none t:$tribuf
