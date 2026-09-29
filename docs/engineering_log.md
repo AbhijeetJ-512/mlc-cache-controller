@@ -645,6 +645,47 @@ correctly at a non-zero word offset.
 
 ---
 
-*Phase 1 (L1 controllers) is complete; D-015 through D-017 were recorded during it. Next: Phase 2
-(L2 controller, standalone — `00_project_plan.md`), which must apply D-017 from the start and honor
-the L1<->L2 fill-request contract in `04_interfaces.md` §2. New entries continue from D-018.*
+## D-018 — L2/L3 victim handling: single shared victim register (resolves OQ-2)
+
+**2026-09-30 · Phase 2 planning**
+
+**Problem.** OQ-1's counterpart for L2/L3: on a dirty-victim eviction, is a single shared
+victim/write-back register enough, or does the write-back-then-fill sequencing need a dedicated
+buffer per level?
+
+**Options considered.**
+
+1. *Single shared victim register*: one address+line+way register, live only from the moment
+   `TAG_CHECK` selects a dirty victim until `EVICT_WRITEBACK` completes.
+2. *A dedicated per-level write-back buffer*, decoupled from the fill that triggered it (e.g. a
+   small FIFO), allowing eviction and fill to be pipelined or reordered.
+
+**Decision.** Option 1.
+
+**Reason.** Misses are blocking (D-004): each level services exactly one miss at a time, and the
+level 2/3 FSM already sequences `EVICT_WRITEBACK` to completion *before* `ALLOC_FILL` begins
+(`03_microarchitecture.md` §1.2) — eviction and fill are never concurrent for the same level, by
+construction. This is a direct structural consequence of D-004, not a new constraint: L2/L3 have
+no same-cycle response obligation analogous to L1's PF-01 (a write *hit* at L2/L3 never forwards
+downstream at all — FR-15 — so there is no L1-D-015-style skid register problem here either).
+A single register holding the selected victim's way, tag/address, and full line is therefore
+sufficient: it is written once when `TAG_CHECK` selects a dirty victim, read once by
+`EVICT_WRITEBACK`, and never needs to hold more than one entry.
+
+**Tradeoffs.** This means eviction write-back and the subsequent fill are strictly serial — the
+full miss penalty is write-back latency *plus* fill latency, not overlapped. Accepted: overlapping
+them would require the downstream link to accept a write and a read concurrently (two outstanding
+transactions), which conflicts with the single-outstanding-transaction downstream contract already
+established for L1<->L2 (`04_interfaces.md` §2) and would reopen exactly the kind of complexity
+D-004 deferred. A future non-blocking phase (already out of v1 scope per D-004) would revisit this
+together with MSHRs, not in isolation.
+
+**Result.** `l2_cache_ctrl.sv`'s `TAG_CHECK`->`EVICT_WRITEBACK`->`ALLOC_FILL`->`UPDATE_TAG`
+sequence uses one `victim_*` register set, mirroring the `miss_*` latch group already used for
+the fill address/data in `l1_cache_ctrl.sv`. `01_requirements.md` OQ-2 marked resolved.
+
+---
+
+*Phase 1 (L1 controllers) is complete; D-015 through D-017 were recorded during it. Phase 2 (L2
+controller, standalone) begins with D-018 above, applying D-016/D-017's Yosys-compatibility
+lessons from the start rather than rediscovering them.*
