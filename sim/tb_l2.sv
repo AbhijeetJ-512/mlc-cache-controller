@@ -175,6 +175,18 @@ module tb_l2;
       check(rline === expected_line(32'h0000_4000), "0x4000 (way1, per the trace above) is still resident - untouched by the eviction");
     end
 
+    begin
+      logic [LINE_W-1:0] rline;
+      cpu_read(32'h0000_0020, rline); // set 1, way?
+      cpu_read(32'h0000_2020, rline); // set 1, way? (same index, different tag)
+      cpu_read(32'h0000_4020, rline);
+      cpu_read(32'h0000_6020, rline);
+      // all 4 ways of set 1 are now resident and clean (never written)
+      cpu_read(32'h0000_8020, rline); // 5th access - forces a clean eviction
+      check(rline === expected_line(32'h0000_8020), "clean-victim eviction installs the new line correctly");
+      check_fwd_empty("evicting a clean victim produces zero write-backs");
+    end
+
     if (errors == 0) begin
       $display("** ALL TESTS PASSED **");
       $finish;
