@@ -34,7 +34,7 @@ module tb_l1_icache;
     logic [mlc_pkg::ADDR_W-1:0] line_base;
     int word_idx;
     line_base = addr & ~(mlc_pkg::L1_LINE_B - 1);
-    word_idx  = (addr - line_base) >> 2;
+    word_idx  = (addr - line_base) >> $clog2(mlc_pkg::BYTES_PER_WORD);
     expected_word = line_base + word_idx;
   endfunction
 
@@ -56,6 +56,17 @@ module tb_l1_icache;
       errors++;
     end
   endtask
+
+  // Simulation watchdog: bounds any stall regression (every wait() below is otherwise unbounded)
+  // to a FAIL line and a nonzero exit instead of a silent hang. The full passing run finishes at
+  // 335 ns (sim/logs/tb_l1_icache.log); this 1500 ns limit is ~4.5x that - raise it if new
+  // scenarios push the legitimate runtime anywhere near it.
+  initial begin
+    #1500;
+    $display("FAIL: simulation watchdog timeout - a scenario is stuck");
+    errors++;
+    $fatal(1);
+  end
 
   initial begin
     req_valid = 0; req_addr = 0; resp_ready = 0;

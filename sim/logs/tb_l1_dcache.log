@@ -1,18 +1,27 @@
+PASS: req_ready is held low while rst_n is asserted
 PASS: req_ready is high after reset, before any request
 PASS: cold-miss read returns the fetched data
 PASS: repeated hit on address 0 returns the same data
 PASS: address 0x20 installed via cold miss
 PASS: write-forward skid register never occupied when L2 is always ready
+PASS: fast-path write hit forwards exactly once with correct payload
 PASS: write hit then read-back returns the written value
+PASS: byte-enable write hit forwards exactly once, with its partial wstrb intact
 PASS: byte-enable write updates only the selected byte
 PASS: skid register stays empty through a back-to-back write-hit burst (Review Focus #3)
 PASS: skid register stays empty through a back-to-back write-hit burst (Review Focus #3)
 PASS: skid register stays empty through a back-to-back write-hit burst (Review Focus #3)
 PASS: skid register stays empty through a back-to-back write-hit burst (Review Focus #3)
 PASS: every write hit in the burst was accepted with req_ready held high throughout
+PASS: burst of 4 write hits forwards exactly 4 times
+PASS: burst forward 0 carries the correct address/wdata
+PASS: burst forward 1 carries the correct address/wdata
+PASS: burst forward 2 carries the correct address/wdata
+PASS: burst forward 3 carries the correct address/wdata
 PASS: write miss installs the line locally with the write applied
 PASS: write-miss eventually forwards the write downstream too
 PASS: the forwarded write carries the correct wdata/wstrb, not stale req_* inputs
+PASS: write miss reaches L2 exactly once, with the latched (not live) address/wdata/wstrb
 PASS: address 0x60 installed via cold miss
 PASS: req_ready drops on a would-be hit while resp_ready is low (response not lost)
 PASS: resp_valid does not fire while the request has not actually been accepted (req_ready=0)
@@ -23,6 +32,16 @@ PASS: resp_valid does not fire while the request has not actually been accepted 
 PASS: req_ready drops on a would-be hit while resp_ready is low (response not lost)
 PASS: resp_valid does not fire while the request has not actually been accepted (req_ready=0)
 PASS: delayed resp_ready still yields the correct hit data once accepted
+PASS: miss completion stays in S_UPDATE_TAG while resp_ready is low
+PASS: miss response is held (resp_valid high, correct data) while resp_ready is low
+PASS: miss completion stays in S_UPDATE_TAG while resp_ready is low
+PASS: miss response is held (resp_valid high, correct data) while resp_ready is low
+PASS: miss completion stays in S_UPDATE_TAG while resp_ready is low
+PASS: miss response is held (resp_valid high, correct data) while resp_ready is low
+PASS: miss completion stays in S_UPDATE_TAG while resp_ready is low
+PASS: miss response is held (resp_valid high, correct data) while resp_ready is low
+PASS: stalled miss response completes with the correct data once resp_ready is asserted
+PASS: S_UPDATE_TAG advances to S_IDLE on the response handshake
 PASS: baseline: original line present before aliasing
 PASS: aliasing address (same index, different tag) misses and installs correctly
 PASS: original line was evicted by the alias and must miss again on re-access
@@ -33,6 +52,8 @@ PASS: req_ready stays low while the write-forward cannot drain to L2
 PASS: req_ready stays low while the write-forward cannot drain to L2
 PASS: req_ready stays low while the write-forward cannot drain to L2
 PASS: req_ready stays low while the write-forward cannot drain to L2
+PASS: no forward reaches L2 while it is held not-ready
+PASS: the pending forward lands exactly once, correctly, after release
 PASS: confirmed mid-fill before reset
 PASS: controller returns to IDLE after reset mid-fill
 PASS: req_ready is high again after reset mid-fill
@@ -40,6 +61,7 @@ PASS: address 0x80 re-installed after Step 28's reset
 PASS: write-forward is pending before reset
 PASS: write-forward skid register clears on reset (CR-03), checked while L2 is still held not-ready so this can only be reset's own doing
 PASS: no downstream write request is still asserted after reset clears the pending forward
+PASS: the forward discarded by reset never reaches L2, even once L2 frees up
 PASS: 0xC0 installed for the resp_valid regression
 PASS: 0x20 re-installed for the resp_valid regression
 PASS: W1's forward is pending (regression setup)
@@ -49,10 +71,19 @@ PASS: req_ready stays low for W2 while W1's forward is pending
 PASS: resp_valid does not fire for a request req_ready never accepted
 PASS: req_ready stays low for W2 while W1's forward is pending
 PASS: resp_valid does not fire for a request req_ready never accepted
+PASS: W1's forward lands correctly once L2 is available
 PASS: W2's write never actually landed - value is still pristine
+PASS: W2 was never accepted, so it never reached L2 either
 PASS: 0x60 installed fresh for the word-offset regression
+PASS: write hit at a non-zero word offset forwards its exact (non-line-aligned) address
 PASS: write hit at a non-zero word offset updates that word
 PASS: neighboring word (word 2) in the same line is unaffected by a non-zero-offset write
 PASS: word 0 of the same line is unaffected by a non-zero-offset write
+PASS: partial-wstrb write miss merges only its enabled bytes into the fill
+PASS: partial-wstrb write miss forwards its wstrb intact
+PASS: partial-wstrb write hit is held in the skid register while L2 is not ready
+PASS: partial-wstrb write hit drains from the skid register with its wstrb intact
+PASS: partial-wstrb write hit merges only its enabled bytes (bytes 0 and 3)
+PASS: no unaccounted-for write forward reached L2 anywhere in the run
 ** ALL TESTS PASSED **
-sim/tb_l1_dcache.sv:354: $finish called at 2045000 (1ps)
+sim/tb_l1_dcache.sv:522: $finish called at 2375000 (1ps)

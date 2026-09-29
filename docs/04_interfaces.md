@@ -33,6 +33,22 @@ req_ready ‾‾‾‾‾‾‾‾‾‾\________   (drops only if this same req
 resp_valid___/‾‾‾‾‾\________   <- same cycle as req_valid, on a hit
 ```
 
+**Binding requirement: the CPU must not derive `resp_ready` from `resp_valid` (hit path).** For a
+hit, request acceptance (`req_ready`) and response delivery (`resp_valid`) are the same synchronous
+event by design — PF-01 requires a hit to complete in the same cycle it is accepted. So L1 raises
+`resp_valid` for a hit only in a cycle in which it is also accepting that request (`req_ready`=1),
+and it accepts a hit only in a cycle in which the CPU can take the response (`req_ready` depends
+on `resp_ready` for a hit — otherwise the response would be lost). The CPU must therefore decide
+`resp_ready` independently of having observed `resp_valid` — for example, by holding `resp_ready`
+high whenever it is able to accept a response, rather than waiting to see `resp_valid` first. A
+CPU using the common "derive ready from having seen valid" convention would deadlock against this
+interface: L1 waits for `resp_ready` before accepting the hit (and so before raising
+`resp_valid`), while the CPU waits for `resp_valid` before raising `resp_ready`. (A miss is
+accepted regardless of `resp_ready`, and its response is held in `UPDATE_TAG` until `resp_ready`
+is seen, so a CPU following this rule is correct for both cases.) This is deliberate: decoupling
+`resp_valid` from `req_ready` would let L1 report a hit as complete in a cycle in which it had not
+accepted that request — the phantom-response class of bug this rule exists to exclude.
+
 **Miss timing (schematic — exact cycle counts are per-configuration and are documented, not
 fixed, per PF-02; see `03_microarchitecture.md` §1 for the state sequence):**
 
@@ -62,6 +78,18 @@ is pure structural wiring (see `02_architecture.md` §3, and Open Question OQ-1 
 | `req_line` | fwd | downstream line width | For a write-back: the full evicted line's data + which-half select (L2->L3 path only, via the adapter) |
 | `resp_valid` / `resp_ready` | back / fwd | 1 | Fill-response handshake |
 | `resp_line` | back | downstream line width | The full fetched line |
+
+**Contract: a fill request's `req_valid` stays high for the whole fill (binding on L2).** On a
+miss, L1 asserts its downstream `req_valid` (`dn_req_valid` on the L1 controller's ports, with
+`req_we`=0 and the miss address) for the entire time it is in `ALLOC_FILL` — not only until the
+downstream level's `req_ready` accepts it — and drops it only once the fill response has arrived.
+L1 has no separate "fill request already accepted" flag; its downstream request is a function of
+its FSM state alone. This is a deliberate part of the L1<->L2 contract, not an oversight, and it
+places a requirement on the downstream level: after accepting a fill request, it must hold its own
+`req_ready` low until it has returned that request's response, so the still-asserted `req_valid`
+is never taken as a second request. The Phase 1 test stub (`sim/l1_downstream_stub.sv`) honors
+this by construction (its `req_ready` is high only in its idle state); the Phase 2 L2 controller
+must honor it too.
 
 At the L2<->L3 boundary specifically, `req_addr`/`resp_line` pass through `l2_l3_width_adapter`,
 which changes the effective payload width (L2 line = 32 B in, L3 line = 64 B on the far side)

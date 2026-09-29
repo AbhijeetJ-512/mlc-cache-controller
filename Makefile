@@ -18,7 +18,7 @@ TESTS := tb_reset_sync tb_l1_dcache tb_l1_icache
 help:
 	@echo "make sim   - run all Tier-1 module-level smoke tests (Icarus)"
 	@echo "make lint  - Yosys elaboration check: hierarchy + zero-latch/tristate (no synthesis)"
-	@echo "make clean - remove simulation build artefacts"
+	@echo "make clean - remove simulation build artefacts (compiled binaries, VCDs; keeps tracked logs)"
 
 .PHONY: lint
 lint:
@@ -36,17 +36,18 @@ sim: $(addprefix $(SIM_DIR)/,$(TESTS))
 $(SIM_DIR)/tb_reset_sync: sim/tb_reset_sync.sv rtl/common/reset_sync.sv
 	$(IVERILOG) -g2012 -o $@ $^
 
-# rtl/common/mlc_pkg.sv is listed first: all downstream files use mlc_pkg::* qualified references,
-# which require the package to be elaborated before any file using those references (see Task 2
-# report, Ruling 3, and Task 4 Ruling 9) - listing it first here ensures package visibility.
+# rtl/common/mlc_pkg.sv is listed first: every other file uses fully-qualified mlc_pkg::<name>
+# references (no `import` - Yosys 0.33 cannot parse it), and both Icarus 12 and Yosys 0.33 only
+# resolve those if the package has already been read - see D-016 in docs/engineering_log.md.
 $(SIM_DIR)/tb_l1_dcache: rtl/common/mlc_pkg.sv sim/tb_l1_dcache.sv sim/l1_downstream_stub.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_dcache_ctrl.sv
 	$(IVERILOG) -g2012 -o $@ $^
 
 $(SIM_DIR)/tb_l1_icache: rtl/common/mlc_pkg.sv sim/tb_l1_icache.sv sim/l1_downstream_stub.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_icache_ctrl.sv
 	$(IVERILOG) -g2012 -o $@ $^
 
+# sim/logs/*.log are git-tracked VR-04 evidence, overwritten by every `make sim` - `clean` must not
+# delete them, or the working tree is left dirty after a clean.
 .PHONY: clean
 clean:
 	@rm -f $(addprefix $(SIM_DIR)/,$(TESTS))
 	@rm -f $(SIM_DIR)/*.vcd
-	@rm -f $(SIM_DIR)/logs/*.log

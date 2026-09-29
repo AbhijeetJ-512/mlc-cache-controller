@@ -549,5 +549,101 @@ resolved.
 
 ---
 
+## D-016 — Package identifiers: fully-qualified `mlc_pkg::` references, never `import`
+
+**2026-09-29 · Phase 1 (Yosys elaboration check bring-up)**
+
+**Problem.** The Phase 1 RTL and testbenches originally reached the shared parameters (`ADDR_W`,
+`DATA_W`, `BYTES_PER_WORD`, the `L1_*` set) through a file-scope `import mlc_pkg::*;`. The first
+Yosys 0.33 run of `make lint` failed at the import line of every such file with
+`ERROR: syntax error, unexpected TOK_ID`. Phase 7 synthesis uses the same Yosys front end, so this
+was not a lint-only problem.
+
+**Options considered.**
+
+1. *Explicit named imports* (`import mlc_pkg::ADDR_W;`) instead of the wildcard.
+2. *Fully-qualified references* — no `import` anywhere; every use is written `mlc_pkg::ADDR_W`.
+3. *`` `define`` macros in an `` `include``d header* in place of the package.
+
+**Decision.** Option 2.
+
+**Reason.** Option 1 was tested directly and fails identically: Yosys 0.33's SystemVerilog front
+end rejects the `import` keyword at file scope in any form, wildcard or named. Option 2 was
+confirmed by the same kind of direct reproduction — a module using `mlc_pkg::ADDR_W` in its port
+widths elaborates cleanly, with the width resolved from the package — and it keeps the package as
+the single source of every parameter (PM-13) in standard SV that Icarus 12 also accepts. Option 3
+would work in both tools, but trades a typed, scoped package for global text-substitution macros
+with `` `include``-order and redefinition hazards of their own.
+
+**Tradeoffs.** Every use site is more verbose (`mlc_pkg::L1_WORD_SEL_W`, not `L1_WORD_SEL_W`).
+The file-order dependency also remains: both Icarus 12 and Yosys 0.33 resolve a qualified
+`mlc_pkg::` reference only if `mlc_pkg.sv` has already been read. With the package listed last,
+Icarus reports syntax errors at the first qualified reference and Yosys fails with
+`Failed to detect width of signal access`. So `rtl/common/mlc_pkg.sv` must be the first file in
+every `iverilog` command and every `read_verilog` sequence. A wrong order fails loudly at compile
+time, never silently.
+
+**Result.** No file in the repository uses `import`. All six files that did
+(`rtl/l1/l1_cache_ctrl.sv`, `rtl/l1/l1_icache_ctrl.sv`, `rtl/l1/l1_dcache_ctrl.sv`,
+`sim/l1_downstream_stub.sv`, `sim/tb_l1_dcache.sv`, `sim/tb_l1_icache.sv`) use qualified
+references, and the `Makefile` and `scripts/lint.ys` list `mlc_pkg.sv` first. Every behavior above
+(both `import` forms rejected; qualified references accepted; package-last fails in both tools) was
+re-reproduced with minimal standalone modules on Yosys 0.33 and Icarus 12.0 while writing this entry.
+
+---
+
+## D-017 — Arrays are only ever single-indexed: word merges happen on a temporary, never on `array[i][j +: w]`
+
+**2026-09-29 · Phase 1 (Yosys elaboration check bring-up)**
+
+**Problem.** Once D-016 let Yosys parse the L1 RTL, `make lint` still did not finish: against the
+real design it ran for more than 5 minutes without completing. The original `l1_cache_ctrl.sv`
+updated one word of a line in place with a doubly-variable-indexed write —
+`data_array[req_index][req_word_sel*DATA_W +: DATA_W] <= merge_wstrb(...)`, a variable array index
+combined with a variable-offset part-select in the same statement — and read `resp_rdata` with the
+same doubly-indexed form.
+
+**Options considered.**
+
+1. *Keep the RTL and work around the runtime* (e.g. drop `proc` from the lint script).
+2. *Single-index the array*: read the whole line with one variable index into an ordinary signal,
+   merge the addressed word into that signal combinationally, and write the whole line back with
+   one variable index (`data_array[req_index] <= hit_write_line_merged;`).
+
+**Decision.** Option 2, as a standing RTL rule for every level.
+
+**Reason.** Isolated by direct before/after reproduction during Phase 1: a minimal module with the
+same array shape (128 x 256 bit) and one doubly-variable-indexed write did not finish Yosys's
+`proc` pass within 60 s, while the same module restructured to Option 2 completed the full
+`proc` / `opt_clean` / `check -assert` / `stat` pipeline in about 10 s. Re-reproduced
+independently while writing this entry, with both variants written inside an async-reset
+`always_ff` as in `l1_cache_ctrl.sv`: the doubly-indexed version had not completed the
+`proc` / `opt_clean` / `check -assert` pipeline when killed at 120 s; the single-indexed version
+completed the same pipeline in 10.9 s. (Control: written in a plain clocked block with no async reset, Yosys
+keeps the array as a memory and both variants finish in under 1 s. The slow case appears once
+Yosys converts the array into individual registers — as it did for the async-reset variants, and
+as it does for `tag_array`/`data_array`/`valid_array` in `l1_cache_ctrl.sv`: the "Replacing memory
+... with list of registers" warnings `make lint` prints.) Option 2 is behavior-identical:
+the line's other words are written back with their own current values. The fill path
+(`fill_line_merged`) already used this pattern. Option 1 would only have moved the same construct
+to Phase 7 synthesis, and dropping `proc` would make the zero-latch check meaningless.
+
+**Tradeoffs.** A write hit now describes a full-line write rather than a one-word write, and the
+RTL carries line-wide temporaries (`req_line_rd`, `miss_line_rd`, `hit_write_line_merged`).
+Whether synthesis maps this to more hardware than the doubly-indexed form would have is
+**NOT YET MEASURED** (Phase 7).
+
+**Forward requirement for L2/L3 (Phase 2+, not yet planned).** L2/L3 arrays are larger and will
+combine way-select with word-select — the same or a worse form of this pattern. Their RTL must
+apply the single-index, merge-on-a-temporary pattern from the start rather than rediscover this.
+
+**Result.** `rtl/l1/l1_cache_ctrl.sv` reads `data_array` only through `req_line_rd`/`miss_line_rd`
+and writes it only with a single index (`hit_write_line_merged`, `fill_line_merged`). `make lint`
+(both L1 tops) completes with exit 0 in about 32 s on this machine (measured 2026-09-29). The
+word-offset regression in `sim/tb_l1_dcache.sv` checks that the restructured merge behaves
+correctly at a non-zero word offset.
+
+---
+
 *Next: user review of the revised spec (`01_requirements.md` through `04_interfaces.md`,
 this log), then `writing-plans` for the Phase 1 implementation plan.*

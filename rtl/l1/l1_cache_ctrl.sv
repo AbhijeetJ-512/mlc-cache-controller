@@ -1,3 +1,11 @@
+// l1_cache_ctrl - shared L1 controller core, instantiated by both l1_icache_ctrl and l1_dcache_ctrl.
+// Key design decisions this module embodies (full reasoning in docs/engineering_log.md):
+//   D-003: direct-mapped, write-through - one tag compare on the hit path, no way-select mux.
+//   D-006: no eviction state - write-through lines are never dirty (TAG_CHECK is combinational in S_IDLE).
+//   D-015: 1-entry write-forward skid register (wr_fwd_*) - a write hit still completes the same cycle
+//          when L2 is not ready; req_ready drops until the pending forward drains.
+//   D-017: data_array is only ever single-indexed; word-level merges are done on plain temporaries
+//          (fill_line_merged, hit_write_line_merged) to keep Yosys's proc pass tractable.
 module l1_cache_ctrl (
   input  logic                      clk,
   input  logic                      rst_n,
@@ -35,7 +43,9 @@ module l1_cache_ctrl (
   logic [mlc_pkg::L1_WORD_SEL_W-1:0] req_word_sel;
   assign req_tag      = req_addr[mlc_pkg::ADDR_W-1 -: mlc_pkg::L1_TAG_W];
   assign req_index    = req_addr[mlc_pkg::L1_OFFSET_W +: mlc_pkg::L1_INDEX_W];
-  assign req_word_sel = req_addr[2 +: mlc_pkg::L1_WORD_SEL_W]; // req_addr[1:0] assumed 00 (word-aligned)
+  // The low $clog2(BYTES_PER_WORD) address bits (the byte offset within a word) are assumed 0
+  // (word-aligned requests); the word select sits immediately above them.
+  assign req_word_sel = req_addr[$clog2(mlc_pkg::BYTES_PER_WORD) +: mlc_pkg::L1_WORD_SEL_W];
 
   logic is_hit;
   assign is_hit = valid_array[req_index] && (tag_array[req_index] == req_tag);
@@ -89,6 +99,11 @@ module l1_cache_ctrl (
   assign req_ready = rst_n && (state == S_IDLE) && !wr_fwd_pending &&
                       (!req_valid || !is_hit || resp_ready);
 
+  // The hit term includes req_ready on purpose: for a hit, request acceptance and response delivery
+  // are the same synchronous event (PF-01), so resp_valid must never report a hit that req_ready did
+  // not accept. Since req_ready itself depends on resp_ready for a hit, the CPU must drive
+  // resp_ready independently of resp_valid - deriving it from having seen resp_valid deadlocks.
+  // This is a binding interface requirement: docs/04_interfaces.md §1.
   assign resp_valid = (state == S_UPDATE_TAG) || (state == S_IDLE && req_valid && req_ready && is_hit);
 
   always_comb begin

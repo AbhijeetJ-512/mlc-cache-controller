@@ -37,7 +37,7 @@ module tb_l1_dcache;
     logic [mlc_pkg::ADDR_W-1:0] line_base;
     int word_idx;
     line_base = addr & ~(mlc_pkg::L1_LINE_B - 1);
-    word_idx  = (addr - line_base) >> 2;
+    word_idx  = (addr - line_base) >> $clog2(mlc_pkg::BYTES_PER_WORD);
     expected_word = line_base + word_idx;
   endfunction
 
@@ -74,10 +74,72 @@ module tb_l1_dcache;
     end
   endtask
 
+  // Global record of every write that actually reached L2: one entry per clock edge on which
+  // dn_req_valid && dn_req_ready && dn_req_we. The L2 stub absorbs write-forwards without storing
+  // them, so this log is the only thing that verifies what L2 received (FR-08). Every scenario
+  // that forwards a write drains it via check_fwd_one/check_fwd_empty (or pops it directly), so
+  // each check sees only its own scenario's forwards. Icarus 12 supports neither a queue of
+  // structs nor named-member assignment patterns, so the queue element is fwd_entry_t's
+  // equivalent packed vector; assigning through fwd_entry_t still gives named-field access.
+  typedef struct packed {
+    logic [mlc_pkg::ADDR_W-1:0]         addr;
+    logic [mlc_pkg::DATA_W-1:0]         wdata;
+    logic [mlc_pkg::BYTES_PER_WORD-1:0] wstrb;
+  } fwd_entry_t;
+  logic [$bits(fwd_entry_t)-1:0] fwd_log[$];
+
+  always @(posedge clk) begin
+    fwd_entry_t e;
+    if (dn_req_valid && dn_req_ready && dn_req_we) begin
+      e.addr = dn_req_addr; e.wdata = dn_req_wdata; e.wstrb = dn_req_wstrb;
+      fwd_log.push_back(e);
+    end
+  end
+
+  // On failure these clear the log, so one scenario's bad forward does not cascade into FAILs
+  // in every later scenario's forward checks.
+  task automatic check_fwd_one(input logic [mlc_pkg::ADDR_W-1:0]         exp_addr,
+                               input logic [mlc_pkg::DATA_W-1:0]         exp_wdata,
+                               input logic [mlc_pkg::BYTES_PER_WORD-1:0] exp_wstrb,
+                               input string msg);
+    fwd_entry_t e;
+    if (fwd_log.size() != 1) begin
+      $display("FAIL: %s (expected exactly 1 forward, got %0d)", msg, fwd_log.size());
+      errors++;
+      fwd_log.delete();
+    end else begin
+      e = fwd_log.pop_front();
+      check(e.addr === exp_addr && e.wdata === exp_wdata && e.wstrb === exp_wstrb, msg);
+      if (!(e.addr === exp_addr && e.wdata === exp_wdata && e.wstrb === exp_wstrb))
+        $display("      (L2 received addr=%h wdata=%h wstrb=%b)", e.addr, e.wdata, e.wstrb);
+    end
+  endtask
+
+  task automatic check_fwd_empty(input string msg);
+    if (fwd_log.size() != 0)
+      $display("      (%0d unexpected forward(s) reached L2)", fwd_log.size());
+    check(fwd_log.size() == 0, msg);
+    fwd_log.delete();
+  endtask
+
+  // Simulation watchdog: bounds any stall regression (every wait() below is otherwise unbounded)
+  // to a FAIL line and a nonzero exit instead of a silent hang. The full passing run finishes at
+  // 2375 ns (sim/logs/tb_l1_dcache.log); this 10000 ns limit is ~4.2x that - raise it if new
+  // scenarios push the legitimate runtime anywhere near it.
+  initial begin
+    #10000;
+    $display("FAIL: simulation watchdog timeout - a scenario is stuck");
+    errors++;
+    $fatal(1);
+  end
+
   initial begin
     req_valid = 0; req_we = 0; req_addr = 0; req_wdata = 0; req_wstrb = 0; resp_ready = 0;
     rst_n = 0;
     repeat (3) @(posedge clk);
+    // Nothing else holds req_ready low here (FSM is in S_IDLE, no forward pending, req_valid=0),
+    // so this isolates the rst_n term of req_ready (04_interfaces.md §5).
+    check(req_ready === 1'b0, "req_ready is held low while rst_n is asserted");
     rst_n = 1;
     @(posedge clk);
 
@@ -102,6 +164,7 @@ module tb_l1_dcache;
       cpu_write(32'h0000_0020, 32'hDEAD_BEEF, 4'b1111);
       check(dut.u_core.wr_fwd_pending === 1'b0,
             "write-forward skid register never occupied when L2 is always ready");
+      check_fwd_one(32'h0000_0020, 32'hDEAD_BEEF, 4'b1111, "fast-path write hit forwards exactly once with correct payload");
       cpu_read(32'h0000_0020, rd);
       check(rd === 32'hDEAD_BEEF, "write hit then read-back returns the written value");
     end
@@ -109,6 +172,9 @@ module tb_l1_dcache;
     begin
       logic [mlc_pkg::DATA_W-1:0] rd;
       cpu_write(32'h0000_0020, 32'h0000_00FF, 4'b0001); // byte 0 only
+      // The only fast-path (L2-ready) write hit with a partial wstrb - without this, a fast-path
+      // forward that always sent wstrb=4'b1111 would pass every other fast-path forward check.
+      check_fwd_one(32'h0000_0020, 32'h0000_00FF, 4'b0001, "byte-enable write hit forwards exactly once, with its partial wstrb intact");
       cpu_read(32'h0000_0020, rd);
       check(rd === 32'hDEAD_BEFF, "byte-enable write updates only the selected byte");
     end
@@ -135,6 +201,17 @@ module tb_l1_dcache;
       req_valid <= 1'b0;
       @(posedge clk);
       check(all_accepted, "every write hit in the burst was accepted with req_ready held high throughout");
+      @(posedge clk); // let the last forward land
+      // The loop above presents wdata 1, 2, 3, 4 on its four accepting edges (req_wdata increments
+      // by NBA after each edge samples it), all to 0x20 with full wstrb.
+      check(fwd_log.size() == 4, "burst of 4 write hits forwards exactly 4 times");
+      for (int k = 0; k < 4 && fwd_log.size() > 0; k++) begin
+        fwd_entry_t e;
+        e = fwd_log.pop_front();
+        check(e.addr === 32'h0000_0020 && e.wdata === (32'h0000_0001 + k) && e.wstrb === 4'b1111,
+              $sformatf("burst forward %0d carries the correct address/wdata", k));
+      end
+      fwd_log.delete(); // only non-empty if the count check above already FAILed - don't cascade
     end
 
     begin
@@ -145,7 +222,24 @@ module tb_l1_dcache;
       fwd_data_correct = 1'b0;
       fork
         begin
-          cpu_write(32'h0000_0040, 32'hCAFE_F00D, 4'b1111);
+          // Issued inline rather than via cpu_write: cpu_write only returns after the whole miss
+          // has completed, and this write's forward reaches L2 on that same returning edge, so
+          // changing req_* after cpu_write returns would prove nothing. Instead the live
+          // req_addr/req_wdata/req_wstrb are stomped with junk on the very edge the miss is
+          // accepted (req_valid drops on that same edge, so no handshake ever sees the junk).
+          // From then on only the latched miss_* registers hold the real values, so if the RTL
+          // used live req_* instead of miss_* for the fill merge or the downstream forward, the
+          // read-back and forward checks below would see the junk instead of matching by
+          // coincidence.
+          @(posedge clk);
+          req_valid <= 1'b1; req_we <= 1'b1; req_addr <= 32'h0000_0040;
+          req_wdata <= 32'hCAFE_F00D; req_wstrb <= 4'b1111; resp_ready <= 1'b1;
+          wait (req_ready);
+          @(posedge clk); // miss accepted on this edge
+          req_valid <= 1'b0;
+          req_addr <= 32'hFFFF_FFFF; req_wdata <= 32'hFFFF_FFFF; req_wstrb <= 4'b0000;
+          wait (resp_valid);
+          @(posedge clk);
           cpu_read(32'h0000_0040, rd);
           check(rd === 32'hCAFE_F00D, "write miss installs the line locally with the write applied");
         end
@@ -161,6 +255,8 @@ module tb_l1_dcache;
       join
       check(saw_write_fwd, "write-miss eventually forwards the write downstream too");
       check(fwd_data_correct, "the forwarded write carries the correct wdata/wstrb, not stale req_* inputs");
+      check_fwd_one(32'h0000_0040, 32'hCAFE_F00D, 4'b1111,
+                    "write miss reaches L2 exactly once, with the latched (not live) address/wdata/wstrb");
     end
 
     begin
@@ -170,6 +266,7 @@ module tb_l1_dcache;
 
       @(posedge clk);
       req_valid <= 1'b1; req_we <= 1'b0; req_addr <= 32'h0000_0060; resp_ready <= 1'b0;
+      // Exercises the documented same-cycle hit contract (04_interfaces.md §1), not an incidental case.
       repeat (4) begin
         @(posedge clk);
         check(req_ready === 1'b0,
@@ -185,6 +282,36 @@ module tb_l1_dcache;
             "delayed resp_ready still yields the correct hit data once accepted");
       req_valid <= 1'b0;
       @(posedge clk);
+    end
+
+    begin
+      // Miss-completion counterpart of the scenario above: once a miss reaches S_UPDATE_TAG, the
+      // controller must hold its response (stay in S_UPDATE_TAG, resp_valid high, data stable)
+      // for as long as resp_ready is low, and leave only on the response handshake.
+      // 0x114 is a never-touched line (index 8) at a non-zero word offset (word 5), so this also
+      // exercises the miss-path word select (miss_word_sel) away from word 0.
+      logic [mlc_pkg::DATA_W-1:0] rd;
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b0; req_addr <= 32'h0000_0114; resp_ready <= 1'b0;
+      wait (req_ready); // a miss is accepted even with resp_ready low (only a hit waits on it)
+      @(posedge clk);
+      req_valid <= 1'b0;
+      wait (dut.u_core.state === dut.u_core.S_UPDATE_TAG);
+      repeat (4) begin
+        @(posedge clk); #1;
+        check(dut.u_core.state === dut.u_core.S_UPDATE_TAG,
+              "miss completion stays in S_UPDATE_TAG while resp_ready is low");
+        check(resp_valid === 1'b1 && resp_rdata === expected_word(32'h0000_0114),
+              "miss response is held (resp_valid high, correct data) while resp_ready is low");
+      end
+      resp_ready <= 1'b1;
+      @(posedge clk); // the response handshake happens on this edge
+      rd = resp_rdata;
+      check(resp_valid === 1'b1 && rd === expected_word(32'h0000_0114),
+            "stalled miss response completes with the correct data once resp_ready is asserted");
+      #1;
+      check(dut.u_core.state === dut.u_core.S_IDLE,
+            "S_UPDATE_TAG advances to S_IDLE on the response handshake");
     end
 
     begin
@@ -235,9 +362,13 @@ module tb_l1_dcache;
         @(posedge clk);
         check(req_ready === 1'b0, "req_ready stays low while the write-forward cannot drain to L2");
       end
-      hold_not_ready = 1'b0;
+      check_fwd_empty("no forward reaches L2 while it is held not-ready");
+      // Released by NBA (not a blocking assignment) so the DUT, the stub and the forward log all
+      // see the same dn_req_ready on the release edge - no ordering race between them.
+      hold_not_ready <= 1'b0;
       @(posedge clk);
       wait (req_ready);
+      check_fwd_one(32'h0000_0080, 32'hFACE_0FF1, 4'b1111, "the pending forward lands exactly once, correctly, after release");
       @(posedge clk);
     end
 
@@ -287,6 +418,8 @@ module tb_l1_dcache;
       hold_not_ready <= 1'b0;
       @(posedge clk);
       wait (req_ready);
+      #1;
+      check_fwd_empty("the forward discarded by reset never reaches L2, even once L2 frees up");
     end
 
     begin
@@ -322,21 +455,25 @@ module tb_l1_dcache;
       hold_not_ready <= 1'b0;
       @(posedge clk);
       wait (req_ready);
+      check_fwd_one(32'h0000_00C0, 32'hAAAA_0001, 4'b1111, "W1's forward lands correctly once L2 is available");
 
       // Confirm W2 was genuinely never applied (data must be unchanged, since it was never accepted).
       cpu_read(32'h0000_0020, rd);
       check(rd === expected_word(32'h0000_0020), "W2's write never actually landed - value is still pristine");
+      check_fwd_empty("W2 was never accepted, so it never reached L2 either");
     end
 
     begin
       // Regression for Task 4 review: no existing test exercises a non-zero word-select
       // offset within a line (every prior address was line-aligned, word_sel always 0).
-      // This directly tests the hit_write_line_merged/req_line_rd restructuring (Ruling 10).
+      // This directly tests the hit_write_line_merged/req_line_rd restructuring (D-017).
       logic [mlc_pkg::DATA_W-1:0] rd;
       cpu_read(32'h0000_0060, rd); // (re-)install this line fresh, regardless of prior state
       check(rd === expected_word(32'h0000_0060), "0x60 installed fresh for the word-offset regression");
 
       cpu_write(32'h0000_006C, 32'hFEED_1234, 4'b1111); // same line, word_sel=3 (0x60 + 3*4)
+      check_fwd_one(32'h0000_006C, 32'hFEED_1234, 4'b1111,
+                    "write hit at a non-zero word offset forwards its exact (non-line-aligned) address");
       cpu_read(32'h0000_006C, rd);
       check(rd === 32'hFEED_1234, "write hit at a non-zero word offset updates that word");
 
@@ -348,6 +485,37 @@ module tb_l1_dcache;
       check(rd === expected_word(32'h0000_0060),
             "word 0 of the same line is unaffected by a non-zero-offset write");
     end
+
+    begin
+      // Partial-wstrb coverage of the two forward paths every scenario above drives only with
+      // wstrb=4'b1111 (so a path that forced wstrb to all-ones would pass all of them):
+      // (1) a write MISS (miss_wstrb -> fill merge and wr_fwd_wstrb), and (2) a write HIT captured
+      // by the skid register while L2 is held not-ready (req_wstrb -> wr_fwd_wstrb).
+      // 0x144 is a never-touched line (index 10), word 1, whose fetched value is 0x0000_0141.
+      logic [mlc_pkg::DATA_W-1:0] rd;
+      cpu_write(32'h0000_0144, 32'hA1B2_C3D4, 4'b0110); // miss: only bytes 1-2 are written
+      cpu_read(32'h0000_0144, rd); // also lets the miss's forward (sent as cpu_write returns) land
+      check(rd === 32'h00B2_C341, "partial-wstrb write miss merges only its enabled bytes into the fill");
+      check_fwd_one(32'h0000_0144, 32'hA1B2_C3D4, 4'b0110, "partial-wstrb write miss forwards its wstrb intact");
+
+      hold_not_ready <= 1'b1;
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b1; req_addr <= 32'h0000_0144;
+      req_wdata <= 32'h5566_7788; req_wstrb <= 4'b1001; resp_ready <= 1'b1;
+      wait (req_ready);
+      @(posedge clk);
+      req_valid <= 1'b0;
+      @(posedge clk);
+      check(dut.u_core.wr_fwd_pending === 1'b1, "partial-wstrb write hit is held in the skid register while L2 is not ready");
+      hold_not_ready <= 1'b0;
+      @(posedge clk);
+      wait (req_ready);
+      check_fwd_one(32'h0000_0144, 32'h5566_7788, 4'b1001, "partial-wstrb write hit drains from the skid register with its wstrb intact");
+      cpu_read(32'h0000_0144, rd);
+      check(rd === 32'h55B2_C388, "partial-wstrb write hit merges only its enabled bytes (bytes 0 and 3)");
+    end
+
+    check_fwd_empty("no unaccounted-for write forward reached L2 anywhere in the run");
 
     if (errors == 0) begin
       $display("** ALL TESTS PASSED **");

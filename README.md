@@ -6,7 +6,13 @@ and L3 with tree-PLRU replacement, a custom valid/ready CPU-side interface, and 
 memory-side interface. Synthesis, STA, and place-and-route all target **Sky130HD** via
 **Yosys + OpenSTA + OpenROAD**, in a single Makefile matching this portfolio's `Full-Adder` flow.
 
-> **Project status: Phase 0 of 12 — Requirements & Architecture.** No RTL has been written yet.
+> **Project status: Phase 1 of 12 — L1 Controllers (I$ and D$), built and Tier-1-verified.** The
+> shared L1 controller core (`rtl/l1/l1_cache_ctrl.sv`) and its I$/D$ wrappers pass their Tier-1
+> module-level Icarus tests (`make sim`, logs checked in under `sim/logs/`) and the Yosys
+> elaboration check with zero inferred latches (`make lint`). L2, L3, the line-size adapter, the
+> AXI4 fill engine and the integrated `mlc_cache_top` are not written yet. Synthesis, timing, area
+> and P&R figures are **NOT YET MEASURED**; the UVM tier is **NOT YET RUN (external simulator
+> required)**.
 > Every number in this repository either cites a checked-in tool report, is labelled
 > **NOT YET MEASURED** (a locally-runnable figure that just hasn't been produced yet), or
 > **NOT YET RUN (external simulator required)** (the UVM verification tier — see below). See
@@ -57,7 +63,7 @@ reasoning and the accepted tradeoff recorded in
 | [`docs/02_architecture.md`](docs/02_architecture.md) | System architecture: hierarchy diagram, per-level address partitioning (derived, not asserted), module list, data flow |
 | [`docs/03_microarchitecture.md`](docs/03_microarchitecture.md) | Per-controller FSMs, the tree-PLRU algorithm with a worked example, the line-size adapter, the AXI4 fill engine |
 | [`docs/04_interfaces.md`](docs/04_interfaces.md) | Signal-level CPU-side, inter-level, and AXI4 memory-side interface specification |
-| [`docs/engineering_log.md`](docs/engineering_log.md) | Every architectural decision: options considered, decision, reason, and the tradeoff accepted — D-001 through D-014 |
+| [`docs/engineering_log.md`](docs/engineering_log.md) | Every architectural decision: options considered, decision, reason, and the tradeoff accepted — D-001 through D-017 |
 
 ## Verification: split by test level, not just by tool
 
@@ -92,6 +98,8 @@ See D-013 in `docs/engineering_log.md` for the full reasoning, including the dir
 
 ## Reproducing the numbers in this README
 
-There are none yet. Nothing has been built or measured (Phase 0). Every command that will
+There are no performance, area or timing numbers yet — nothing has been synthesized or measured.
+The only checked-in results so far are Phase 1's Tier-1 pass/fail logs: `make sim` regenerates
+`sim/logs/*.log`, and `make lint` re-runs the Yosys elaboration check. Every command that will
 eventually produce a number is specified in the phase table in `docs/00_project_plan.md`, so
 each claim will be checkable the moment it exists — per this project's `NOT YET MEASURED` policy.
