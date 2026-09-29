@@ -84,6 +84,10 @@ PASS: partial-wstrb write miss forwards its wstrb intact
 PASS: partial-wstrb write hit is held in the skid register while L2 is not ready
 PASS: partial-wstrb write hit drains from the skid register with its wstrb intact
 PASS: partial-wstrb write hit merges only its enabled bytes (bytes 0 and 3)
+PASS: fresh-line read miss accepted into S_ALLOC_FILL (req_addr now stomped with junk)
+PASS: miss with req_addr stomped after acceptance returns the original address's data, not junk-derived data
+PASS: L2 accepts exactly one fill request, carrying the latched miss address
+PASS: the fill request's address stays the latched miss address for its whole duration
 PASS: no unaccounted-for write forward reached L2 anywhere in the run
 ** ALL TESTS PASSED **
-sim/tb_l1_dcache.sv:522: $finish called at 2375000 (1ps)
+sim/tb_l1_dcache.sv:570: $finish called at 2525000 (1ps)

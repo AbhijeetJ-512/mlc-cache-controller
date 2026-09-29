@@ -645,5 +645,6 @@ correctly at a non-zero word offset.
 
 ---
 
-*Next: user review of the revised spec (`01_requirements.md` through `04_interfaces.md`,
-this log), then `writing-plans` for the Phase 1 implementation plan.*
+*Phase 1 (L1 controllers) is complete; D-015 through D-017 were recorded during it. Next: Phase 2
+(L2 controller, standalone — `00_project_plan.md`), which must apply D-017 from the start and honor
+the L1<->L2 fill-request contract in `04_interfaces.md` §2. New entries continue from D-018.*

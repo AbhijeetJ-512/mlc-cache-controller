@@ -124,7 +124,7 @@ module tb_l1_dcache;
 
   // Simulation watchdog: bounds any stall regression (every wait() below is otherwise unbounded)
   // to a FAIL line and a nonzero exit instead of a silent hang. The full passing run finishes at
-  // 2375 ns (sim/logs/tb_l1_dcache.log); this 10000 ns limit is ~4.2x that - raise it if new
+  // 2525 ns (sim/logs/tb_l1_dcache.log); this 10000 ns limit is ~4.0x that - raise it if new
   // scenarios push the legitimate runtime anywhere near it.
   initial begin
     #10000;
@@ -513,6 +513,54 @@ module tb_l1_dcache;
       check_fwd_one(32'h0000_0144, 32'h5566_7788, 4'b1001, "partial-wstrb write hit drains from the skid register with its wstrb intact");
       cpu_read(32'h0000_0144, rd);
       check(rd === 32'h55B2_C388, "partial-wstrb write hit merges only its enabled bytes (bytes 0 and 3)");
+    end
+
+    begin
+      // The fill request sent to L2 must carry the latched miss_addr, not the live req_addr.
+      // Driven manually (cpu_read holds req_addr stable until the response, which would hide a
+      // live-vs-latched bug): req_addr is stomped with junk on the very edge the miss is accepted,
+      // which is legal - nothing requires the CPU to hold req_addr once req_valid drops. L2 only
+      // accepts the fill request on a later edge, so a fill request built from live req_addr
+      // would reach L2 as junk and bring back the wrong line.
+      // 0x178 is a never-touched line (index 11) at word 6 (junk req_addr would select word 7).
+      logic [mlc_pkg::DATA_W-1:0] rd;
+      int   fill_handshakes;
+      logic fill_addr_ok, fill_addr_stable;
+      fill_handshakes = 0; fill_addr_ok = 1'b0; fill_addr_stable = 1'b1;
+      fork
+        begin
+          @(posedge clk);
+          req_valid <= 1'b1; req_we <= 1'b0; req_addr <= 32'h0000_0178; resp_ready <= 1'b1;
+          wait (req_ready);
+          @(posedge clk); // miss accepted on this edge
+          req_valid <= 1'b0;
+          req_addr  <= 32'hFFFF_FFFF;
+          #1;
+          check(dut.u_core.state === dut.u_core.S_ALLOC_FILL,
+                "fresh-line read miss accepted into S_ALLOC_FILL (req_addr now stomped with junk)");
+          wait (resp_valid);
+          rd = resp_rdata;
+          @(posedge clk);
+        end
+        begin: watch_fill_req
+          repeat (15) begin
+            @(posedge clk);
+            if (dn_req_valid && !dn_req_we) begin
+              if (dn_req_addr !== 32'h0000_0178) fill_addr_stable = 1'b0;
+              if (dn_req_ready) begin
+                fill_handshakes++;
+                fill_addr_ok = (dn_req_addr === 32'h0000_0178);
+              end
+            end
+          end
+        end
+      join
+      check(rd === expected_word(32'h0000_0178),
+            "miss with req_addr stomped after acceptance returns the original address's data, not junk-derived data");
+      check(fill_handshakes == 1 && fill_addr_ok,
+            "L2 accepts exactly one fill request, carrying the latched miss address");
+      check(fill_addr_stable,
+            "the fill request's address stays the latched miss address for its whole duration");
     end
 
     check_fwd_empty("no unaccounted-for write forward reached L2 anywhere in the run");
