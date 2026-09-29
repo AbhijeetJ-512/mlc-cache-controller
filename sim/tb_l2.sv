@@ -237,6 +237,15 @@ module tb_l2;
       @(posedge clk);
     end
 
+    // (insert near the top of the test sequence, right after the initial reset block, or as a
+    // second reset pulse here - either placement is fine as long as rst_n is observed low with
+    // a live check on req_ready)
+    rst_n <= 1'b0;
+    @(posedge clk); #1;
+    check(req_ready === 1'b0, "req_ready is held low while rst_n is asserted");
+    rst_n <= 1'b1;
+    @(posedge clk);
+
     if (errors == 0) begin
       $display("** ALL TESTS PASSED **");
       $finish;
