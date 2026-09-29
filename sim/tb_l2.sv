@@ -187,6 +187,34 @@ module tb_l2;
       check_fwd_empty("evicting a clean victim produces zero write-backs");
     end
 
+    begin
+      logic [LINE_W-1:0] rline;
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b1; req_addr <= 32'h0000_0040; // fresh set (index 2)
+      req_wdata <= 32'hCAFE_F00D; req_wstrb <= 4'b1111; resp_ready <= 1'b1;
+      wait (req_ready);
+      @(posedge clk);
+      req_valid <= 1'b0;
+      wait (resp_valid);
+      @(posedge clk);
+      check_fwd_empty("write-allocate does not forward downstream immediately (write-back semantics)");
+      cpu_read(32'h0000_0040, rline);
+      check(rline[0 +: mlc_pkg::DATA_W] === 32'hCAFE_F00D,
+            "write-allocate merged the write into the fetched line correctly");
+      // Per-word loop, not a bit-slice on expected_line(...)'s return value directly: Icarus 12
+      // rejects a part-select applied straight to a function call's result (confirmed by direct
+      // isolated reproduction), so the comparison line is materialized into a temporary first.
+      // The brief calls out this exact substitution as an equally-valid style choice.
+      begin
+        logic [LINE_W-1:0] exp_line_0040;
+        exp_line_0040 = expected_line(32'h0000_0040);
+        for (int w = 1; w < mlc_pkg::L2_LINE_B / mlc_pkg::BYTES_PER_WORD; w++) begin
+          check(rline[w*mlc_pkg::DATA_W +: mlc_pkg::DATA_W] === exp_line_0040[w*mlc_pkg::DATA_W +: mlc_pkg::DATA_W],
+                $sformatf("write-allocate left word %0d of the fetched line unmodified", w));
+        end
+      end
+    end
+
     if (errors == 0) begin
       $display("** ALL TESTS PASSED **");
       $finish;
