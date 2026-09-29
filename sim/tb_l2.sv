@@ -92,6 +92,17 @@ module tb_l2;
     @(posedge clk);
   endtask
 
+  task automatic cpu_write_hit(input logic [mlc_pkg::ADDR_W-1:0] addr, input logic [mlc_pkg::DATA_W-1:0] wdata);
+    @(posedge clk);
+    req_valid <= 1'b1; req_we <= 1'b1; req_addr <= addr;
+    req_wdata <= wdata; req_wstrb <= 4'b1111; resp_ready <= 1'b1;
+    wait (req_ready);
+    @(posedge clk);
+    req_valid <= 1'b0;
+    wait (resp_valid);
+    @(posedge clk);
+  endtask
+
   task automatic check(input logic cond, input string msg);
     if (cond) $display("PASS: %s", msg);
     else begin
@@ -264,6 +275,52 @@ module tb_l2;
       resp_ready <= 1'b1;
       @(posedge clk); #1;
       check(dut.state === dut.S_IDLE, "S_UPDATE_TAG advances to S_IDLE once resp_ready is asserted");
+    end
+
+    begin
+      // Force every way of set 0 dirty first (see note above), so this scenario's eviction is
+      // guaranteed dirty regardless of which way PLRU actually selects as the 6th access's victim.
+      cpu_write_hit(32'h0000_0000, 32'hFEED_0000);
+      cpu_write_hit(32'h0000_2000, 32'hFEED_0001);
+      cpu_write_hit(32'h0000_4000, 32'hFEED_0002);
+      cpu_write_hit(32'h0000_6000, 32'hFEED_0003);
+
+      // Reset mid-EVICT_WRITEBACK: force an eviction by re-visiting set 0 (all 4 ways occupied,
+      // now all dirty per above) with a 6th distinct tag, and reset while it is stalled waiting
+      // for the L3 stub (hold_not_ready blocks EVICT_WRITEBACK from completing).
+      hold_not_ready = 1'b1;
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b0; req_addr <= 32'h0000_A000; resp_ready <= 1'b1;
+      wait (req_ready);
+      @(posedge clk);
+      req_valid <= 1'b0;
+      wait (dut.state === dut.S_EVICT_WRITEBACK);
+      check(dut.state === dut.S_EVICT_WRITEBACK,
+            "the 6th access to set 0 reaches S_EVICT_WRITEBACK (dirty victim, per the writes above)");
+      repeat (3) @(posedge clk);
+      rst_n <= 1'b0;
+      repeat (2) @(posedge clk);
+      rst_n <= 1'b1;
+      hold_not_ready <= 1'b0;
+      @(posedge clk); #1;
+      check(dut.state === dut.S_IDLE, "controller returns to IDLE after reset mid-eviction");
+      check(req_ready === 1'b1, "req_ready is high again after reset mid-eviction");
+    end
+
+    begin
+      // Reset mid-ALLOC_FILL, mirroring the same check already proven for L1.
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b0; req_addr <= 32'h0000_00A0; resp_ready <= 1'b1; // fresh set
+      wait (req_ready);
+      @(posedge clk);
+      req_valid <= 1'b0;
+      wait (dut.state === dut.S_ALLOC_FILL);
+      rst_n <= 1'b0;
+      repeat (2) @(posedge clk);
+      rst_n <= 1'b1;
+      @(posedge clk); #1;
+      check(dut.state === dut.S_IDLE, "controller returns to IDLE after reset mid-fill");
+      check(req_ready === 1'b1, "req_ready is high again after reset mid-fill");
     end
 
     if (errors == 0) begin
