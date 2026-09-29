@@ -747,6 +747,58 @@ own at L2/L3 scale without this separation too.
 
 ---
 
+## D-020 — Testbench forward-log monitors: no queue of a struct type on Icarus 12; use parallel queues
+
+**2026-09-30 · Phase 2 (`tb_l2.sv` bring-up)**
+
+**Problem.** `sim/tb_l2.sv`'s forward-log monitor (the mutation-testing-motivated pattern that
+records every downstream write handshake so an eviction write-back is checked at the receiving
+end, not by re-reading `l2_cache_ctrl.sv`'s own array) was first written the natural way: a
+`fwd_entry_t` packed struct (`{addr, line}`) held in a queue, pushed with an assignment-pattern
+literal (`fwd_log.push_back('{addr: dn_req_addr, line: dn_req_line})`). Compiling it hit three
+distinct failures in sequence, not one: (1) the assignment-pattern literal as a direct task-call
+argument — `Syntax error in task arguments`; (2) after moving the literal into a temporary of the
+packed-struct type, `Sorry: Queue of type ... is not yet supported`; (3) switching the struct from
+`packed` to plain (unpacked) to work around (2) instead hit `Sorry: Unpacked structs not
+supported`. So the actual blocker is (2)/(3) — Icarus 12 supports a queue of a struct type in
+neither form — and (1) was a symptom of trying to work around it in place rather than the root
+cause.
+
+**Options considered.**
+
+1. *Keep the struct-queue design and find some third struct spelling that elaborates.* Ruled out
+   directly: both spellings SystemVerilog allows for a struct type (`packed`, unpacked) were tried
+   and both are explicitly unsupported by Icarus 12's queue elaboration, per the tool's own
+   messages — there is no third form to try.
+2. *Two parallel queues of plain packed vectors* (`fwd_addr_log[$]` of `[ADDR_W-1:0]`,
+   `fwd_line_log[$]` of `[LINE_W-1:0]`), pushed and popped together by index/order rather than as
+   one aggregate.
+
+**Decision.** Option 2.
+
+**Reason.** Confirmed directly with a minimal reproduction outside the testbench: a queue of a
+plain packed vector (`logic [255:0] q[$]`) pushes, sizes, and pops correctly on Icarus 12, with no
+warning of any kind — the limitation is specific to queues of an aggregate (struct) element type,
+not to queues in general. Two parallel queues preserve the forward-log monitor's actual verification
+property unchanged (one entry per accepted downstream write handshake, poppable in issue order,
+checked at the receiving end) since both queues are only ever pushed together (one `always @(posedge
+clk)` block, one `if`) and popped together (`check_fwd_one` pops both before comparing), so they
+cannot desync into different lengths.
+
+**Tradeoffs.** Two related queues instead of one is a smaller abstraction than the natural
+`{addr, line}` pairing suggests the data has — a reader must know they are kept in lockstep by
+convention, not by the type system. Mitigated by keeping every push and every pop of the two
+queues textually adjacent (never one without the other) and commented as to why the split exists.
+
+**Result.** `sim/tb_l2.sv`'s forward-log monitor uses `fwd_addr_log[$]`/`fwd_line_log[$]` in place
+of a `fwd_entry_t` struct queue; `check_fwd_one`/`check_fwd_empty` read both. This is a testbench-
+only finding (no RTL is affected) but is forward-relevant: Phase 3's `tb_l3.sv` is expected to
+reuse the same forward-log-monitor pattern for its own eviction write-back checks (per the
+mutation-testing discipline this project follows) and should use the two-parallel-queues form from
+the start rather than rediscover this.
+
+---
+
 *Phase 1 (L1 controllers) is complete; D-015 through D-017 were recorded during it. Phase 2 (L2
 controller, standalone) begins with D-018/D-019 above, applying every Yosys-compatibility lesson
 from Phase 1 (D-016, D-017) plus the two found here from the start, rather than rediscovering
