@@ -105,6 +105,22 @@ module tb_l2;
     end
   endfunction
 
+  // Latched-vs-live guard (mutation-driven). Once a miss has been accepted, the controller must work
+  // only from its latched miss_* copies, never from the live req_* inputs - but a testbench that
+  // holds req_* steady for the whole miss cannot tell the two apart. So right after every accepted
+  // miss (and after every cpu_read, where a hit's response has already been sampled by then), all
+  // request fields except req_valid are driven to clearly wrong values: an address whose tag,
+  // set (247, never used by any test) and word (3) all differ from every test address, and X for
+  // the write controls and data. If the RTL re-read any live req_* field mid-miss, the wrong set,
+  // tag, word, or an X would show up in a checked result.
+  localparam logic [mlc_pkg::ADDR_W-1:0] POISON_ADDR = 32'hDEAD_BEEC;
+  task automatic poison_req();
+    req_addr  <= POISON_ADDR;
+    req_we    <= 1'bx;
+    req_wdata <= 'x;
+    req_wstrb <= 'x;
+  endtask
+
   task automatic cpu_read(input logic [mlc_pkg::ADDR_W-1:0] addr, output logic [LINE_W-1:0] rline);
     @(posedge clk);
     req_valid <= 1'b1; req_we <= 1'b0; req_addr <= addr;
@@ -112,6 +128,9 @@ module tb_l2;
     wait (req_ready);
     @(posedge clk);
     req_valid <= 1'b0;
+    // Nonblocking, so it lands after this edge: a hit's same-cycle response is still sampled below
+    // with the real request, while a miss runs its whole sequence against the poisoned inputs.
+    poison_req();
     wait (resp_valid);
     rline = resp_line;
     @(posedge clk);
@@ -148,6 +167,7 @@ module tb_l2;
     wait (req_ready);
     @(posedge clk);
     req_valid <= 1'b0;
+    poison_req();
     wait (dut.state === dut.S_TAG_CHECK);
     wait (dut.state === dut.S_IDLE);
   endtask
@@ -328,6 +348,7 @@ module tb_l2;
       check(req_ready === 1'b1 && resp_valid === 1'b0,
             "D-021: a write miss is accepted with resp_ready low and without a response");
       req_valid <= 1'b0;
+      poison_req();
       wait (dut.state === dut.S_UPDATE_TAG);
       #1;
       check(resp_valid === 1'b0, "D-021: a write-allocate miss completion does not raise resp_valid");
@@ -361,6 +382,7 @@ module tb_l2;
       wait (req_ready);
       @(posedge clk);
       req_valid <= 1'b0;
+      poison_req();
       wait (dut.state === dut.S_UPDATE_TAG);
       repeat (4) begin
         @(posedge clk); #1;
@@ -399,6 +421,7 @@ module tb_l2;
       wait (req_ready);
       @(posedge clk);
       req_valid <= 1'b0;
+      poison_req();
       wait (dut.state === dut.S_EVICT_WRITEBACK);
       check(dut.state === dut.S_EVICT_WRITEBACK,
             "the 6th access to set 0 reaches S_EVICT_WRITEBACK (dirty victim, per the writes above)");
@@ -419,6 +442,7 @@ module tb_l2;
       wait (req_ready);
       @(posedge clk);
       req_valid <= 1'b0;
+      poison_req();
       wait (dut.state === dut.S_ALLOC_FILL);
       rst_n <= 1'b0;
       repeat (2) @(posedge clk);
