@@ -47,6 +47,13 @@ PASS: D-021: a write-allocate miss leaves S_UPDATE_TAG after one cycle without r
 PASS: D-021: the posted write hit committed to the array
 PASS: D-021: the posted write-allocate miss merged its write into the filled line
 PASS: D-021: neither posted write forwarded anything downstream
+PASS: set 6: four write-allocate fills into an empty set produce no write-back
+PASS: set 6: a read hit on way1 (0x40C0) returns way1's own line, with its write-allocated word 6
+PASS: set 6: the read of 0x40C0 (way1) is a genuine hit (no downstream read)
+PASS: set 6: 5th access (0x80C0) installs correctly
+PASS: set 6: 5th access writes back way2 (0x20C0), the victim after the way1 hit's PLRU update, with its dirty content exactly
+PASS: set 6: 6th access (0xA0C0) installs correctly
+PASS: set 6: 6th access writes back way0 (0x00C0) with its dirty content exactly
 PASS: req_ready is held low while rst_n is asserted
 PASS: miss completion stays in S_UPDATE_TAG while resp_ready is low
 PASS: miss response is held (resp_valid high, correct line) while resp_ready is low
@@ -68,4 +75,4 @@ PASS: controller returns to IDLE after reset mid-fill
 PASS: req_ready is high again after reset mid-fill
 PASS: no write (hit or write-allocate miss) raised resp_valid anywhere in the run (D-021, posted writes)
 ** ALL TESTS PASSED **
-sim/tb_l2.sv:460: $finish called at 2656000 (1ps)
+sim/tb_l2.sv:510: $finish called at 3306000 (1ps)

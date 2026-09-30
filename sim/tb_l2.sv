@@ -105,6 +105,14 @@ module tb_l2;
     end
   endfunction
 
+  // l3_stub's pattern for addr's line, with one whole word replaced (a full-strobe write).
+  function automatic logic [LINE_W-1:0] expected_line_with_word(input logic [mlc_pkg::ADDR_W-1:0] addr,
+                                                                input int word,
+                                                                input logic [mlc_pkg::DATA_W-1:0] data);
+    expected_line_with_word = expected_line(addr);
+    expected_line_with_word[word*mlc_pkg::DATA_W +: mlc_pkg::DATA_W] = data;
+  endfunction
+
   // Latched-vs-live guard (mutation-driven). Once a miss has been accepted, the controller must work
   // only from its latched miss_* copies, never from the live req_* inputs - but a testbench that
   // holds req_* steady for the whole miss cannot tell the two apart. So right after every accepted
@@ -363,6 +371,48 @@ module tb_l2;
       check(rline[0 +: mlc_pkg::DATA_W] === 32'h0D21_0002,
             "D-021: the posted write-allocate miss merged its write into the filled line");
       check_fwd_empty("D-021: neither posted write forwarded anything downstream");
+    end
+
+    begin
+      // PLRU on a hit to a non-zero way, and evictions from non-zero ways (mutation-driven: every
+      // other hit and eviction in this file lands on way 0). Set 6 starts empty with a reset PLRU
+      // tree (all bits 0). Tree-PLRU, as in plru_tree.sv and tb_plru.sv: the root bit picks the
+      // victim's half (0 = ways 0/1, 1 = ways 2/3), each child bit picks the way within its pair,
+      // and an access flips every bit on its path to point away from the accessed way.
+      //
+      // Four write-allocate misses fill ways 0, 2, 1, 3 in that order, all dirty, each with
+      // distinct data in a distinct non-zero word, and leave the tree back at all-0 (victim way0):
+      //   0x00C0 -> way0, word 1 = 1111_1111      0x40C0 -> way1, word 6 = 3333_3333
+      //   0x20C0 -> way2, word 2 = 2222_2222      0x60C0 -> way3, word 7 = 4444_4444
+      // A read hit on 0x40C0 (way1: non-zero, and not the predicted victim) sets root=1, left=0,
+      // moving the predicted victim from way0 to way2. So the 5th access (0x80C0) must write back
+      // 0x20C0 (way2); without that hit's PLRU update it would take way0 (0x00C0). Filling way2 then
+      // sets root=0, right=1 (victim way0), so the 6th access (0xA0C0) must write back 0x00C0. A
+      // controller that updated PLRU as if the hit were on way0 would agree on the 5th access but
+      // pick way1 (0x40C0) on the 6th.
+      logic [LINE_W-1:0] rline;
+      int rd_count_before;
+      cpu_write_alloc(32'h0000_00C4, 32'h1111_1111, 4'b1111); // 0x00C0 word 1
+      cpu_write_alloc(32'h0000_20C8, 32'h2222_2222, 4'b1111); // 0x20C0 word 2
+      cpu_write_alloc(32'h0000_40D8, 32'h3333_3333, 4'b1111); // 0x40C0 word 6
+      cpu_write_alloc(32'h0000_60DC, 32'h4444_4444, 4'b1111); // 0x60C0 word 7
+      check_fwd_empty("set 6: four write-allocate fills into an empty set produce no write-back");
+
+      rd_count_before = dn_rd_count;
+      cpu_read(32'h0000_40C0, rline);
+      check(rline === expected_line_with_word(32'h0000_40C0, 6, 32'h3333_3333),
+            "set 6: a read hit on way1 (0x40C0) returns way1's own line, with its write-allocated word 6");
+      check(dn_rd_count == rd_count_before, "set 6: the read of 0x40C0 (way1) is a genuine hit (no downstream read)");
+
+      cpu_read(32'h0000_80C0, rline);
+      check(rline === expected_line(32'h0000_80C0), "set 6: 5th access (0x80C0) installs correctly");
+      check_fwd_one(32'h0000_20C0, expected_line_with_word(32'h0000_20C0, 2, 32'h2222_2222),
+                    "set 6: 5th access writes back way2 (0x20C0), the victim after the way1 hit's PLRU update, with its dirty content exactly");
+
+      cpu_read(32'h0000_A0C0, rline);
+      check(rline === expected_line(32'h0000_A0C0), "set 6: 6th access (0xA0C0) installs correctly");
+      check_fwd_one(32'h0000_00C0, expected_line_with_word(32'h0000_00C0, 1, 32'h1111_1111),
+                    "set 6: 6th access writes back way0 (0x00C0) with its dirty content exactly");
     end
 
     // (insert near the top of the test sequence, right after the initial reset block, or as a
