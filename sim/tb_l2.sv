@@ -528,6 +528,27 @@ module tb_l2;
     end
 
     begin
+      // Stale dirty bits after reset (mutation-driven). D-019 keeps dirty_array reset-free (its
+      // content is don't-care until the line is valid), so after the reset above every way of set
+      // 0 is invalid but still holds the dirty=1 left by the write hits before it (the aborted
+      // eviction never filled anything). A cold miss into set 0 must check valid AND dirty before
+      // choosing S_EVICT_WRITEBACK; checking dirty alone would write back a line that no longer
+      // exists. On Icarus a never-written dirty bit reads as X, which an `if` treats as false, so
+      // only a leftover 1 like this one can expose that bug - hence the precondition check.
+      logic [LINE_W-1:0] rline;
+      logic stale_dirty_invalid;
+      stale_dirty_invalid = 1'b1;
+      for (int w = 0; w < WAYS; w++) begin
+        if (!(dut.dirty_array[0][w] === 1'b1 && dut.valid_array[0][w] === 1'b0)) stale_dirty_invalid = 1'b0;
+      end
+      check(stale_dirty_invalid,
+            "precondition: after the reset every way of set 0 is invalid but still holds a stale dirty=1");
+      cpu_read(32'h0000_C000, rline); // set 0, a tag never used before
+      check(rline === expected_line(32'h0000_C000), "a cold miss into a set with stale dirty bits installs correctly");
+      check_fwd_empty("a cold miss never writes back an invalid way, even one with a stale dirty bit");
+    end
+
+    begin
       // Reset mid-ALLOC_FILL, mirroring the same check already proven for L1.
       @(posedge clk);
       req_valid <= 1'b1; req_we <= 1'b0; req_addr <= 32'h0000_00A0; resp_ready <= 1'b1; // fresh set

@@ -86,8 +86,11 @@ PASS: write to 0x00006000 is accepted with resp_ready low and completes as a gen
 PASS: the 6th access to set 0 reaches S_EVICT_WRITEBACK (dirty victim, per the writes above)
 PASS: controller returns to IDLE after reset mid-eviction
 PASS: req_ready is high again after reset mid-eviction
+PASS: precondition: after the reset every way of set 0 is invalid but still holds a stale dirty=1
+PASS: a cold miss into a set with stale dirty bits installs correctly
+PASS: a cold miss never writes back an invalid way, even one with a stale dirty bit
 PASS: controller returns to IDLE after reset mid-fill
 PASS: req_ready is high again after reset mid-fill
 PASS: no write (hit or write-allocate miss) raised resp_valid anywhere in the run (D-021, posted writes)
 ** ALL TESTS PASSED **
-sim/tb_l2.sv:552: $finish called at 3856000 (1ps)
+sim/tb_l2.sv:573: $finish called at 3956000 (1ps)
