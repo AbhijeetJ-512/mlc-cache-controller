@@ -53,6 +53,14 @@ module tb_l2;
     end
   end
 
+  // Downstream READ (fill request) handshake counter. l3_stub returns purely address-derived data,
+  // so a read's returned line cannot tell a genuine hit from a silent miss-and-refetch - both give
+  // the same pattern. A hit is proven only by the count NOT increasing across the access.
+  int dn_rd_count = 0;
+  always @(posedge clk) begin
+    if (dn_req_valid && dn_req_ready && !dn_req_we) dn_rd_count++;
+  end
+
   task automatic check_fwd_one(input logic [mlc_pkg::ADDR_W-1:0] exp_addr,
                                 input logic [LINE_W-1:0] exp_line, input string msg);
     logic [mlc_pkg::ADDR_W-1:0] a;
@@ -170,8 +178,11 @@ module tb_l2;
 
     begin
       logic [LINE_W-1:0] rline;
+      int rd_count_before;
+      rd_count_before = dn_rd_count;
       cpu_read(32'h0000_0000, rline);
       check(rline === expected_line(32'h0000_0000), "repeated hit on address 0 returns the same line");
+      check(dn_rd_count == rd_count_before, "the repeated access to address 0 is a genuine hit (no downstream read)");
     end
 
     begin
@@ -187,6 +198,7 @@ module tb_l2;
     begin
       logic [LINE_W-1:0] rline;
       logic [LINE_W-1:0] expected_evicted_line;
+      int rd_count_before;
       // 0x0000 is already resident (way0, from earlier). Fill the remaining 3 ways of set 0 -
       // each installs into whichever way select_victim currently predicts (see the trace above;
       // do not assume a fixed way0->way1->way2->way3 fill order).
@@ -207,18 +219,33 @@ module tb_l2;
       check_fwd_one(32'h0000_0000, expected_evicted_line,
                     "traced-through eviction (way0) writes back its dirty content exactly");
 
+      // The eviction took way0 only, so 0x2000 (installed in way2) and 0x4000 (installed in way1)
+      // must still be resident. Returned data alone cannot prove that (a miss would refetch the
+      // same address-derived pattern from l3_stub), so each read must also issue no downstream
+      // read. These reads come before the 0x0000 re-fetch below on purpose: that re-fetch is itself
+      // a miss into this full set and evicts another way.
+      rd_count_before = dn_rd_count;
+      cpu_read(32'h0000_2000, rline);
+      check(rline === expected_line(32'h0000_2000), "0x2000 (way2) returns its line after the way0 eviction");
+      check(dn_rd_count == rd_count_before,
+            "0x2000 (way2) is still resident - a genuine hit, no downstream read was issued");
+      rd_count_before = dn_rd_count;
+      cpu_read(32'h0000_4000, rline);
+      check(rline === expected_line(32'h0000_4000), "0x4000 (way1) returns its line after the way0 eviction");
+      check(dn_rd_count == rd_count_before,
+            "0x4000 (way1) is still resident - a genuine hit, no downstream read was issued");
+
       // 0x0000 now misses again (its line was just evicted). l3_stub.sv is a pure function of
       // address with no memory of the write-back it just absorbed, so the re-fetch returns the
       // pristine pattern, NOT the DEAD_BEEF-modified content that was written back - the write-
       // back above proved the dirty data left L2 correctly; it does not mean L3 remembers it.
+      rd_count_before = dn_rd_count;
       cpu_read(32'h0000_0000, rline);
       check(rline === expected_line(32'h0000_0000),
             "the evicted address (0x0000) misses again and re-fetches L3's pristine pattern");
-
-      cpu_read(32'h0000_2000, rline);
-      check(rline === expected_line(32'h0000_2000), "0x2000 (way2, per the trace above) is still resident - untouched by the eviction");
-      cpu_read(32'h0000_4000, rline);
-      check(rline === expected_line(32'h0000_4000), "0x4000 (way1, per the trace above) is still resident - untouched by the eviction");
+      check(dn_rd_count == rd_count_before + 1,
+            "the evicted address (0x0000) is a genuine miss - exactly one downstream read was issued");
+      check_fwd_empty("the 0x0000 re-fetch evicts a clean line (every resident way of set 0 is clean now) - no write-back");
     end
 
     begin

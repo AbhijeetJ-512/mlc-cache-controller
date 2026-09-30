@@ -2,6 +2,7 @@ PASS: req_ready is high after reset, before any request
 PASS: cold-miss read returns the fetched line
 PASS: a clean cold-miss fill produces no write-back
 PASS: repeated hit on address 0 returns the same line
+PASS: the repeated access to address 0 is a genuine hit (no downstream read)
 PASS: write to 0x00000000 is accepted with resp_ready low and completes as a genuine hit
 PASS: a write hit never forwards downstream (FR-15, write-back semantics)
 PASS: write hit then read-back returns the written word (word 0 of the line)
@@ -10,9 +11,13 @@ PASS: set 0's 3rd distinct tag installs correctly
 PASS: set 0's 4th distinct tag installs correctly (all 4 ways now occupied)
 PASS: set 0, 5th access installs correctly
 PASS: traced-through eviction (way0) writes back its dirty content exactly
+PASS: 0x2000 (way2) returns its line after the way0 eviction
+PASS: 0x2000 (way2) is still resident - a genuine hit, no downstream read was issued
+PASS: 0x4000 (way1) returns its line after the way0 eviction
+PASS: 0x4000 (way1) is still resident - a genuine hit, no downstream read was issued
 PASS: the evicted address (0x0000) misses again and re-fetches L3's pristine pattern
-PASS: 0x2000 (way2, per the trace above) is still resident - untouched by the eviction
-PASS: 0x4000 (way1, per the trace above) is still resident - untouched by the eviction
+PASS: the evicted address (0x0000) is a genuine miss - exactly one downstream read was issued
+PASS: the 0x0000 re-fetch evicts a clean line (every resident way of set 0 is clean now) - no write-back
 PASS: clean-victim eviction installs the new line correctly
 PASS: evicting a clean victim produces zero write-backs
 PASS: write-allocate does not forward downstream immediately (write-back semantics)
@@ -63,4 +68,4 @@ PASS: controller returns to IDLE after reset mid-fill
 PASS: req_ready is high again after reset mid-fill
 PASS: no write (hit or write-allocate miss) raised resp_valid anywhere in the run (D-021, posted writes)
 ** ALL TESTS PASSED **
-sim/tb_l2.sv:409: $finish called at 2796000 (1ps)
+sim/tb_l2.sv:436: $finish called at 2656000 (1ps)
