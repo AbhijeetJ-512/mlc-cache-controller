@@ -69,6 +69,19 @@ PASS: set 8: the pending write-back (0x0100, way0) stays presented and unchanged
 PASS: set 8: no write-back handshake completes while dn_req_ready is low
 PASS: set 8: the 5th access installs correctly once backpressure lifts
 PASS: set 8: exactly one write-back of 0x0100 (way0), with its dirty content, arrives once backpressure lifts
+PASS: write to 0x12347134 is accepted with resp_ready low and completes as a genuine hit
+PASS: partial write hit (word 5, wstrb 0101) forwards nothing downstream
+PASS: partial write hit: the read-back of 0x1234_7120 is a genuine hit
+PASS: partial write hit: word 5 bytes 0 and 2 (strobe on) took the new data
+PASS: partial write hit: word 5 bytes 1 and 3 (strobe off) are unchanged
+PASS: partial write hit: every other word of the line is unchanged
+PASS: set 137: evicting the clean way0 line (0x1234_5120) produces no write-back
+PASS: set 137: evicting way2 writes back the partially written line exactly
+PASS: partial write-allocate (word 5, wstrb 0101) forwards nothing downstream
+PASS: partial write-allocate: the read-back of 0x5678_9140 is a genuine hit
+PASS: partial write-allocate: word 5 bytes 0 and 2 (strobe on) took the new data
+PASS: partial write-allocate: word 5 bytes 1 and 3 (strobe off) kept the fetched data
+PASS: partial write-allocate: every other word of the fetched line is unchanged
 PASS: req_ready is held low while rst_n is asserted
 PASS: miss completion stays in S_UPDATE_TAG while resp_ready is low
 PASS: miss response is held (resp_valid high, correct line) while resp_ready is low
@@ -93,4 +106,4 @@ PASS: controller returns to IDLE after reset mid-fill
 PASS: req_ready is high again after reset mid-fill
 PASS: no write (hit or write-allocate miss) raised resp_valid anywhere in the run (D-021, posted writes)
 ** ALL TESTS PASSED **
-sim/tb_l2.sv:573: $finish called at 3956000 (1ps)
+sim/tb_l2.sv:653: $finish called at 4746000 (1ps)

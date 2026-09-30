@@ -4,6 +4,7 @@ module tb_l2;
 
   localparam int WAYS  = mlc_pkg::L2_WAYS;
   localparam int LINE_W = mlc_pkg::L2_LINE_B * 8;
+  localparam int WORDS_PER_LINE = mlc_pkg::L2_LINE_B / mlc_pkg::BYTES_PER_WORD;
 
   logic clk = 1'b0;
   always #5 clk = ~clk;
@@ -149,11 +150,12 @@ module tb_l2;
   // hit commits on its acceptance edge, so the task is done once req_valid drops. It also checks,
   // at that edge, that the write really was accepted and really was a hit (the controller stays in
   // S_IDLE instead of starting a miss sequence), so no call site can silently take the miss path.
-  task automatic cpu_write_hit(input logic [mlc_pkg::ADDR_W-1:0] addr, input logic [mlc_pkg::DATA_W-1:0] wdata);
+  task automatic cpu_write_hit_strb(input logic [mlc_pkg::ADDR_W-1:0] addr, input logic [mlc_pkg::DATA_W-1:0] wdata,
+                                    input logic [mlc_pkg::BYTES_PER_WORD-1:0] wstrb);
     logic accepted;
     @(posedge clk);
     req_valid <= 1'b1; req_we <= 1'b1; req_addr <= addr;
-    req_wdata <= wdata; req_wstrb <= 4'b1111; resp_ready <= 1'b0;
+    req_wdata <= wdata; req_wstrb <= wstrb; resp_ready <= 1'b0;
     wait (req_ready);
     @(posedge clk);
     accepted = req_ready; // sampled at the acceptance edge, before any state update lands
@@ -161,6 +163,10 @@ module tb_l2;
     #1;
     check(accepted === 1'b1 && dut.state === dut.S_IDLE,
           $sformatf("write to 0x%08h is accepted with resp_ready low and completes as a genuine hit", addr));
+  endtask
+
+  task automatic cpu_write_hit(input logic [mlc_pkg::ADDR_W-1:0] addr, input logic [mlc_pkg::DATA_W-1:0] wdata);
+    cpu_write_hit_strb(addr, wdata, 4'b1111);
   endtask
 
   // Write miss (write-allocate), posted (D-021). resp_ready is held low throughout. After the
@@ -455,6 +461,80 @@ module tb_l2;
       check(rline === expected_line(32'h0000_8100), "set 8: the 5th access installs correctly once backpressure lifts");
       check_fwd_one(32'h0000_0100, exp_wb_line,
                     "set 8: exactly one write-back of 0x0100 (way0), with its dirty content, arrives once backpressure lifts");
+    end
+
+    begin
+      // Partial-word writes at a non-zero word offset (mutation-driven: every other write in this
+      // file uses wstrb = 4'b1111, so ignoring the byte strobes, or the word select on a write
+      // hit, went undetected). Both cases write word 5 (byte offset 0x14) with wstrb = 4'b0101:
+      // only bytes 0 and 2 of that word may change. The addresses have non-zero upper bytes, so a
+      // kept byte is distinguishable from a written one.
+      //
+      // Write HIT on a non-zero way, set 137 (same-set tag stride 0x2000): 0x1234_5120 fills way0
+      // and 0x1234_7120 fills way2. Word 5 of 0x1234_7120's line is 0x1234_7125; writing
+      // 0xA1B2_C3D4 with wstrb 0101 must give 0x12B2_71D4 (bytes 0/2 = D4/B2 new, 1/3 = 71/12 kept).
+      logic [LINE_W-1:0]          rline;
+      logic [LINE_W-1:0]          orig;
+      logic [LINE_W-1:0]          exp_merged;
+      logic [mlc_pkg::DATA_W-1:0] w5;
+      logic                       others_ok;
+      int                         rd_count_before;
+
+      cpu_read(32'h1234_5120, rline);
+      cpu_read(32'h1234_7120, rline);
+      cpu_write_hit_strb(32'h1234_7134, 32'hA1B2_C3D4, 4'b0101); // word 5 of 0x1234_7120 (way2)
+      check_fwd_empty("partial write hit (word 5, wstrb 0101) forwards nothing downstream");
+      rd_count_before = dn_rd_count;
+      cpu_read(32'h1234_7120, rline);
+      check(dn_rd_count == rd_count_before, "partial write hit: the read-back of 0x1234_7120 is a genuine hit");
+      w5 = rline[5*mlc_pkg::DATA_W +: mlc_pkg::DATA_W];
+      check(w5[7:0] === 8'hD4 && w5[23:16] === 8'hB2,
+            "partial write hit: word 5 bytes 0 and 2 (strobe on) took the new data");
+      check(w5[15:8] === 8'h71 && w5[31:24] === 8'h12,
+            "partial write hit: word 5 bytes 1 and 3 (strobe off) are unchanged");
+      orig = expected_line(32'h1234_7120);
+      others_ok = 1'b1;
+      for (int w = 0; w < WORDS_PER_LINE; w++) begin
+        if (w != 5 && rline[w*mlc_pkg::DATA_W +: mlc_pkg::DATA_W] !== orig[w*mlc_pkg::DATA_W +: mlc_pkg::DATA_W])
+          others_ok = 1'b0;
+      end
+      check(others_ok, "partial write hit: every other word of the line is unchanged");
+
+      // Evict that line so its merged content, and the dirty bit the write hit set on way2 (not
+      // way0), are also checked at the receiving end. 0x1234_9120 fills way1 and 0x1234_B120 fills
+      // way3, leaving the tree at all-0 (victim way0). 0x1234_D120 then evicts way0 (0x1234_5120,
+      // clean: no write-back) and leaves root=1, right=0 (victim way2), so 0x1234_F120 evicts way2
+      // (0x1234_7120), which is dirty only because of the partial write hit.
+      cpu_read(32'h1234_9120, rline);
+      cpu_read(32'h1234_B120, rline);
+      cpu_read(32'h1234_D120, rline);
+      check_fwd_empty("set 137: evicting the clean way0 line (0x1234_5120) produces no write-back");
+      cpu_read(32'h1234_F120, rline);
+      exp_merged = orig;
+      exp_merged[5*mlc_pkg::DATA_W +: mlc_pkg::DATA_W] = 32'h12B2_71D4;
+      check_fwd_one(32'h1234_7120, exp_merged,
+                    "set 137: evicting way2 writes back the partially written line exactly");
+
+      // Write-allocate MISS, set 138: 0x5678_9154 is word 5 of the line at 0x5678_9140, whose
+      // fetched word 5 is 0x5678_9145. Writing 0x5E6F_7A8B with wstrb 0101 must give 0x566F_918B
+      // (bytes 0/2 = 8B/6F new, 1/3 = 91/56 kept).
+      cpu_write_alloc(32'h5678_9154, 32'h5E6F_7A8B, 4'b0101);
+      check_fwd_empty("partial write-allocate (word 5, wstrb 0101) forwards nothing downstream");
+      rd_count_before = dn_rd_count;
+      cpu_read(32'h5678_9140, rline);
+      check(dn_rd_count == rd_count_before, "partial write-allocate: the read-back of 0x5678_9140 is a genuine hit");
+      w5 = rline[5*mlc_pkg::DATA_W +: mlc_pkg::DATA_W];
+      check(w5[7:0] === 8'h8B && w5[23:16] === 8'h6F,
+            "partial write-allocate: word 5 bytes 0 and 2 (strobe on) took the new data");
+      check(w5[15:8] === 8'h91 && w5[31:24] === 8'h56,
+            "partial write-allocate: word 5 bytes 1 and 3 (strobe off) kept the fetched data");
+      orig = expected_line(32'h5678_9140);
+      others_ok = 1'b1;
+      for (int w = 0; w < WORDS_PER_LINE; w++) begin
+        if (w != 5 && rline[w*mlc_pkg::DATA_W +: mlc_pkg::DATA_W] !== orig[w*mlc_pkg::DATA_W +: mlc_pkg::DATA_W])
+          others_ok = 1'b0;
+      end
+      check(others_ok, "partial write-allocate: every other word of the fetched line is unchanged");
     end
 
     // (insert near the top of the test sequence, right after the initial reset block, or as a
