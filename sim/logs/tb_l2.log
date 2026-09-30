@@ -10,7 +10,7 @@ PASS: set 0's 2nd distinct tag installs correctly
 PASS: set 0's 3rd distinct tag installs correctly
 PASS: set 0's 4th distinct tag installs correctly (all 4 ways now occupied)
 PASS: set 0, 5th access installs correctly
-PASS: traced-through eviction (way0) writes back its dirty content exactly
+PASS: set 0, 5th access evicts the PLRU-predicted way0 (0x0000) and writes back its dirty content exactly
 PASS: 0x2000 (way2) returns its line after the way0 eviction
 PASS: 0x2000 (way2) is still resident - a genuine hit, no downstream read was issued
 PASS: 0x4000 (way1) returns its line after the way0 eviction
@@ -96,7 +96,7 @@ PASS: write to 0x00000000 is accepted with resp_ready low and completes as a gen
 PASS: write to 0x00002000 is accepted with resp_ready low and completes as a genuine hit
 PASS: write to 0x00004000 is accepted with resp_ready low and completes as a genuine hit
 PASS: write to 0x00006000 is accepted with resp_ready low and completes as a genuine hit
-PASS: the 6th access to set 0 reaches S_EVICT_WRITEBACK (dirty victim, per the writes above)
+PASS: a fifth distinct tag (0xA000) in the full set 0 reaches S_EVICT_WRITEBACK (dirty victim, per the writes above)
 PASS: controller returns to IDLE after reset mid-eviction
 PASS: req_ready is high again after reset mid-eviction
 PASS: precondition: after the reset every way of set 0 is invalid but still holds a stale dirty=1
@@ -106,4 +106,4 @@ PASS: controller returns to IDLE after reset mid-fill
 PASS: req_ready is high again after reset mid-fill
 PASS: no write (hit or write-allocate miss) raised resp_valid anywhere in the run (D-021, posted writes)
 ** ALL TESTS PASSED **
-sim/tb_l2.sv:653: $finish called at 4746000 (1ps)
+sim/tb_l2.sv:659: $finish called at 4746000 (1ps)

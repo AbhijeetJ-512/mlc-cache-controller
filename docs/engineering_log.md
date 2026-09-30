@@ -739,11 +739,22 @@ Whether this materially changes synthesized area or timing versus one combined p
 synthesis optimization claim.
 
 **Result.** `l2_cache_ctrl.sv` (and `l3_cache_ctrl.sv` when Phase 3 reuses it) splits `tag_array`/
-`dirty_array`/`data_array` writes into one reset-free `always_ff @(posedge clk)`, and `valid_array`
-plus all scalar FSM/control state into a separate `always_ff @(posedge clk or negedge rst_n)`.
+`dirty_array`/`data_array` writes into one reset-free `always_ff @(posedge clk)`, and `valid_array`,
+the FSM `state`, and the `miss_*` latches into a separate `always_ff @(posedge clk or negedge rst_n)`.
+The victim register (`victim_way_latched`/`victim_tag_latched`/`victim_line_latched`, D-018) also
+lives in the reset-free block. This is harmless: like the arrays, it is don't-care until written,
+and `S_TAG_CHECK` always writes it before `S_EVICT_WRITEBACK` or a fill reads it.
 This supersedes D-017's guidance for any array whose entry count materially exceeds L1's — D-017's
 single-indexing fix still applies within each array access, but is no longer sufficient on its
 own at L2/L3 scale without this separation too.
+
+The memory-inference property is now a permanent, explicit check on the real module, not only
+Task 3's informal inspection of Yosys's "Replacing memory" warning text. `scripts/lint.ys`'s
+`l2_cache_ctrl` block asserts `select -assert-count 3 l2_cache_ctrl/m:*` (exactly `tag_array`,
+`dirty_array` and `data_array` remain real `$mem` cells; `valid_array` is expected to flatten) and
+`select -assert-count 1 l2_cache_ctrl/m:data_array`. `make lint` passes with both assertions (exit 0,
+about 37 s on this machine, 2026-10-01). A deliberately wrong count (4) was confirmed to fail,
+listing exactly those three memories.
 
 ---
 
@@ -886,7 +897,11 @@ fails (the write-hit acceptance check and read-back fail, then the watchdog fire
 write-allocate never leaves `S_UPDATE_TAG`), so the regression really detects the bug. Both failure
 modes in **Problem** were reproduced on the pre-fix RTL and pass on the fixed RTL in scratch
 L1 -> L2 -> `l3_stub` simulations. Those simulations are not checked in: L1/L2 integration testing
-belongs to a later phase, and the checked-in evidence for this decision is `tb_l2`.
+belongs to a later phase, and the checked-in evidence for this decision is `tb_l2`. After the rest
+of the Phase 2 final-review fix wave, `tb_l2` runs 107 checks, all passing (`sim/logs/tb_l2.log`,
+2026-10-01). In a scratch mutation run (also not checked in), reverting any one of the three
+expressions was caught by the suite, and so was dropping only the `!req_we` from `resp_valid`'s hit
+term.
 
 ---
 

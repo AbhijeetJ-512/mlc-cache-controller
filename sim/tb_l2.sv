@@ -36,9 +36,10 @@ module tb_l2;
     .resp_valid(dn_resp_valid), .resp_ready(dn_resp_ready), .resp_line(dn_resp_line)
   );
 
-  // Forward-log monitor (Review Focus / Phase 1 lesson): records every downstream write
-  // handshake so eviction write-backs are verified at the receiving end, not just by re-reading
-  // this module's own array afterward.
+  // Forward-log monitor: records every downstream write handshake so eviction write-backs are
+  // verified at the receiving end, not just by re-reading this module's own array afterward
+  // (Phase 1's final review showed by mutation testing that a completely broken write path can
+  // pass every test that only checks local array state).
   //
   // D-020: a queue of a struct type (packed or unpacked) is rejected by Icarus 12 ("Queue of type
   // ... is not yet supported" / "Unpacked structs not supported"), so the log is kept as two
@@ -233,9 +234,15 @@ module tb_l2;
       logic [LINE_W-1:0] rline;
       logic [LINE_W-1:0] expected_evicted_line;
       int rd_count_before;
-      // 0x0000 is already resident (way0, from earlier). Fill the remaining 3 ways of set 0 -
-      // each installs into whichever way select_victim currently predicts (see the trace above;
-      // do not assume a fixed way0->way1->way2->way3 fill order).
+      // 0x0000 is already resident (way0, dirty from the DEAD_BEEF write hit). Fill the remaining
+      // 3 ways of set 0; each installs into whichever way the PLRU tree currently predicts, which
+      // is NOT way0->way1->way2->way3. Tree-PLRU: the root bit picks the victim's half (0 = ways
+      // 0/1, 1 = ways 2/3), each child bit picks the way within its pair, and every access flips
+      // the bits on its path to point away from the accessed way. The accesses to way0 so far
+      // leave root=1, left=1 (victim way2), so:
+      //   0x2000 -> way2 (root=0, right=1: victim way1)
+      //   0x4000 -> way1 (root=1, left=0:  victim way3)
+      //   0x6000 -> way3 (all bits 0:      victim way0)
       cpu_read(32'h0000_2000, rline);
       check(rline === expected_line(32'h0000_2000), "set 0's 2nd distinct tag installs correctly");
       cpu_read(32'h0000_4000, rline);
@@ -243,15 +250,15 @@ module tb_l2;
       cpu_read(32'h0000_6000, rline);
       check(rline === expected_line(32'h0000_6000), "set 0's 4th distinct tag installs correctly (all 4 ways now occupied)");
 
-      // A 5th access to set 0 (a new tag) evicts the traced-through victim (way0 / address
-      // 0x0000) and must produce exactly one write-back, of exactly its dirty content.
+      // A 5th access to set 0 (a new tag) evicts the predicted victim (way0 / address 0x0000)
+      // and must produce exactly one write-back, of exactly its dirty content.
       cpu_read(32'h0000_8000, rline);
       check(rline === expected_line(32'h0000_8000), "set 0, 5th access installs correctly");
 
       expected_evicted_line = expected_line(32'h0000_0000);
       expected_evicted_line[0 +: mlc_pkg::DATA_W] = 32'hDEAD_BEEF;
       check_fwd_one(32'h0000_0000, expected_evicted_line,
-                    "traced-through eviction (way0) writes back its dirty content exactly");
+                    "set 0, 5th access evicts the PLRU-predicted way0 (0x0000) and writes back its dirty content exactly");
 
       // The eviction took way0 only, so 0x2000 (installed in way2) and 0x4000 (installed in way1)
       // must still be resident. Returned data alone cannot prove that (a miss would refetch the
@@ -306,7 +313,6 @@ module tb_l2;
       // Per-word loop, not a bit-slice on expected_line(...)'s return value directly: Icarus 12
       // rejects a part-select applied straight to a function call's result (confirmed by direct
       // isolated reproduction), so the comparison line is materialized into a temporary first.
-      // The brief calls out this exact substitution as an equally-valid style choice.
       begin
         logic [LINE_W-1:0] exp_line_0040;
         exp_line_0040 = expected_line(32'h0000_0040);
@@ -537,9 +543,9 @@ module tb_l2;
       check(others_ok, "partial write-allocate: every other word of the fetched line is unchanged");
     end
 
-    // (insert near the top of the test sequence, right after the initial reset block, or as a
-    // second reset pulse here - either placement is fine as long as rst_n is observed low with
-    // a live check on req_ready)
+    // Second reset pulse, applied while idle: req_ready must be observed low while rst_n is
+    // asserted (04_interfaces.md §5). This also clears every valid bit, so every set is empty for
+    // the scenarios that follow.
     rst_n <= 1'b0;
     @(posedge clk); #1;
     check(req_ready === 1'b0, "req_ready is held low while rst_n is asserted");
@@ -596,7 +602,7 @@ module tb_l2;
       poison_req();
       wait (dut.state === dut.S_EVICT_WRITEBACK);
       check(dut.state === dut.S_EVICT_WRITEBACK,
-            "the 6th access to set 0 reaches S_EVICT_WRITEBACK (dirty victim, per the writes above)");
+            "a fifth distinct tag (0xA000) in the full set 0 reaches S_EVICT_WRITEBACK (dirty victim, per the writes above)");
       repeat (3) @(posedge clk);
       rst_n <= 1'b0;
       repeat (2) @(posedge clk);

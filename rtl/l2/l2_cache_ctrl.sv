@@ -111,6 +111,11 @@ module l2_cache_ctrl #(
   logic [TAG_W-1:0]     victim_tag_latched;
   logic [LINE_W-1:0]    victim_line_latched;
 
+  // PLRU access port, driven below (declared before the instantiation that connects it).
+  logic                 plru_access_valid;
+  logic [INDEX_W-1:0]   plru_access_set;
+  logic [WAY_SEL_W-1:0] plru_access_way;
+
   // victim_way (the plru_tree's combinational output) is only ever consumed once, in
   // commit_tag_check's latch below - and by the time the FSM is actually in S_TAG_CHECK,
   // miss_index is already correctly latched (set on the same edge as the S_IDLE->S_TAG_CHECK
@@ -126,10 +131,6 @@ module l2_cache_ctrl #(
     .access_way   (plru_access_way)
   );
 
-  logic plru_access_valid;
-  logic [INDEX_W-1:0]   plru_access_set;
-  logic [WAY_SEL_W-1:0] plru_access_way;
-
   logic [LINE_W-1:0] fill_line_merged;
   always_comb begin
     fill_line_merged = dn_resp_line;
@@ -141,14 +142,18 @@ module l2_cache_ctrl #(
 
   // --- shared commit-condition signals (see Global Constraints: computed once, used by both
   // the reset-free and reset-bearing always_ff blocks below, so they cannot drift apart) ---
+  // hit_accept: a hit is being accepted this cycle. The one definition feeds the write-hit commit,
+  // the PLRU hit update and the read-hit response, so those three can never disagree about it.
+  logic hit_accept;
   logic commit_write_hit;
   logic commit_tag_check;
   logic commit_fill;
-  assign commit_write_hit = (state == S_IDLE) && req_valid && req_ready && is_hit && req_we;
+  assign hit_accept       = (state == S_IDLE) && req_valid && req_ready && is_hit;
+  assign commit_write_hit = hit_accept && req_we;
   assign commit_tag_check = (state == S_TAG_CHECK);
   assign commit_fill      = (state == S_ALLOC_FILL) && dn_resp_valid;
 
-  assign plru_access_valid = ((state == S_IDLE) && req_valid && req_ready && is_hit) || commit_fill;
+  assign plru_access_valid = hit_accept || commit_fill;
   assign plru_access_set   = commit_fill ? miss_index : req_index;
   assign plru_access_way   = commit_fill ? victim_way_latched : hit_way;
 
@@ -157,7 +162,7 @@ module l2_cache_ctrl #(
   // raises resp_valid - matching L1's write-through forward, which never waits for a response.
   assign req_ready = rst_n && (state == S_IDLE) && (!req_valid || !is_hit || req_we || resp_ready);
 
-  assign resp_valid = (state == S_UPDATE_TAG && !miss_is_write) || (state == S_IDLE && req_valid && req_ready && is_hit && !req_we);
+  assign resp_valid = (state == S_UPDATE_TAG && !miss_is_write) || (hit_accept && !req_we);
 
   always_comb begin
     if (state == S_UPDATE_TAG) resp_line = data_array[miss_index][victim_way_latched];
@@ -184,7 +189,7 @@ module l2_cache_ctrl #(
     end
   end
 
-  // --- reset-free: tag/dirty/data writes only (D-019) ---
+  // --- reset-free: tag/dirty/data array writes and the victim_* register (D-019) ---
   always_ff @(posedge clk) begin
     if (commit_write_hit) begin
       data_array[req_index][hit_way]  <= hit_write_line_merged;
@@ -202,7 +207,7 @@ module l2_cache_ctrl #(
     end
   end
 
-  // --- reset-bearing: valid_array + all scalar FSM/control state (D-019) ---
+  // --- reset-bearing: valid_array, the FSM state, and the miss_* latches (D-019) ---
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       state <= S_IDLE;
