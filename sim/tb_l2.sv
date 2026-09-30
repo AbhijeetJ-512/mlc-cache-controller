@@ -415,6 +415,48 @@ module tb_l2;
                     "set 6: 6th access writes back way0 (0x00C0) with its dirty content exactly");
     end
 
+    begin
+      // Write-back under real backpressure (mutation-driven: the only other eviction stall in this
+      // file is aborted by a reset, never released). A pending write-back must stay presented,
+      // unchanged, for as long as L3 holds dn_req_ready low, and must not be dropped or skipped.
+      // Set 8: four write-allocate misses fill ways 0, 2, 1, 3 (all dirty, tree back to all-0, so
+      // the predicted victim is way0 = 0x0100). hold_not_ready then keeps l3_stub's req_ready low
+      // while a 5th access sits in S_EVICT_WRITEBACK.
+      logic [LINE_W-1:0] rline;
+      logic [LINE_W-1:0] exp_wb_line;
+      cpu_write_alloc(32'h0000_0100, 32'h8888_0000, 4'b1111);
+      cpu_write_alloc(32'h0000_2100, 32'h8888_2000, 4'b1111);
+      cpu_write_alloc(32'h0000_4100, 32'h8888_4000, 4'b1111);
+      cpu_write_alloc(32'h0000_6100, 32'h8888_6000, 4'b1111);
+      check_fwd_empty("set 8: four write-allocate fills into an empty set produce no write-back");
+      exp_wb_line = expected_line_with_word(32'h0000_0100, 0, 32'h8888_0000);
+
+      hold_not_ready = 1'b1;
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b0; req_addr <= 32'h0000_8100; resp_ready <= 1'b1;
+      wait (req_ready);
+      @(posedge clk);
+      req_valid <= 1'b0;
+      poison_req();
+      wait (dut.state === dut.S_EVICT_WRITEBACK);
+      repeat (4) begin
+        @(posedge clk); #1;
+        check(dut.state === dut.S_EVICT_WRITEBACK,
+              "set 8: the controller stays in S_EVICT_WRITEBACK while dn_req_ready is held low");
+        check(dn_req_valid === 1'b1 && dn_req_we === 1'b1 && dn_req_addr === 32'h0000_0100 &&
+              dn_req_line === exp_wb_line,
+              "set 8: the pending write-back (0x0100, way0) stays presented and unchanged under backpressure");
+        check_fwd_empty("set 8: no write-back handshake completes while dn_req_ready is low");
+      end
+      hold_not_ready = 1'b0;
+      wait (resp_valid);
+      rline = resp_line;
+      @(posedge clk);
+      check(rline === expected_line(32'h0000_8100), "set 8: the 5th access installs correctly once backpressure lifts");
+      check_fwd_one(32'h0000_0100, exp_wb_line,
+                    "set 8: exactly one write-back of 0x0100 (way0), with its dirty content, arrives once backpressure lifts");
+    end
+
     // (insert near the top of the test sequence, right after the initial reset block, or as a
     // second reset pulse here - either placement is fine as long as rst_n is observed low with
     // a live check on req_ready)
