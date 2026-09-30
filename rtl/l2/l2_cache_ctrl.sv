@@ -152,9 +152,12 @@ module l2_cache_ctrl #(
   assign plru_access_set   = commit_fill ? miss_index : req_index;
   assign plru_access_way   = commit_fill ? victim_way_latched : hit_way;
 
-  assign req_ready = rst_n && (state == S_IDLE) && (!req_valid || !is_hit || resp_ready);
+  // D-021: upstream writes are posted. Only a read hit hands back data in its acceptance cycle, so
+  // only a read hit needs resp_ready to be accepted; a write (hit or write-allocate miss) never
+  // raises resp_valid - matching L1's write-through forward, which never waits for a response.
+  assign req_ready = rst_n && (state == S_IDLE) && (!req_valid || !is_hit || req_we || resp_ready);
 
-  assign resp_valid = (state == S_UPDATE_TAG) || (state == S_IDLE && req_valid && req_ready && is_hit);
+  assign resp_valid = (state == S_UPDATE_TAG && !miss_is_write) || (state == S_IDLE && req_valid && req_ready && is_hit && !req_we);
 
   always_comb begin
     if (state == S_UPDATE_TAG) resp_line = data_array[miss_index][victim_way_latched];
@@ -235,7 +238,7 @@ module l2_cache_ctrl #(
           if (dn_resp_valid) state <= S_UPDATE_TAG;
         end
         S_UPDATE_TAG: begin
-          if (resp_ready) state <= S_IDLE;
+          if (miss_is_write || resp_ready) state <= S_IDLE;
         end
         default: state <= S_IDLE;
       endcase

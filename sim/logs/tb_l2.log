@@ -2,6 +2,7 @@ PASS: req_ready is high after reset, before any request
 PASS: cold-miss read returns the fetched line
 PASS: a clean cold-miss fill produces no write-back
 PASS: repeated hit on address 0 returns the same line
+PASS: write to 0x00000000 is accepted with resp_ready low and completes as a genuine hit
 PASS: a write hit never forwards downstream (FR-15, write-back semantics)
 PASS: write hit then read-back returns the written word (word 0 of the line)
 PASS: set 0's 2nd distinct tag installs correctly
@@ -33,6 +34,14 @@ PASS: resp_valid does not fire while the request has not been accepted
 PASS: req_ready drops on a would-be hit while resp_ready is low
 PASS: resp_valid does not fire while the request has not been accepted
 PASS: delayed resp_ready still yields the correct hit data once accepted
+PASS: D-021: a write hit is accepted while resp_ready is low
+PASS: D-021: a write hit does not raise resp_valid
+PASS: D-021: a write miss is accepted with resp_ready low and without a response
+PASS: D-021: a write-allocate miss completion does not raise resp_valid
+PASS: D-021: a write-allocate miss leaves S_UPDATE_TAG after one cycle without resp_ready
+PASS: D-021: the posted write hit committed to the array
+PASS: D-021: the posted write-allocate miss merged its write into the filled line
+PASS: D-021: neither posted write forwarded anything downstream
 PASS: req_ready is held low while rst_n is asserted
 PASS: miss completion stays in S_UPDATE_TAG while resp_ready is low
 PASS: miss response is held (resp_valid high, correct line) while resp_ready is low
@@ -43,10 +52,15 @@ PASS: miss response is held (resp_valid high, correct line) while resp_ready is 
 PASS: miss completion stays in S_UPDATE_TAG while resp_ready is low
 PASS: miss response is held (resp_valid high, correct line) while resp_ready is low
 PASS: S_UPDATE_TAG advances to S_IDLE once resp_ready is asserted
+PASS: write to 0x00000000 is accepted with resp_ready low and completes as a genuine hit
+PASS: write to 0x00002000 is accepted with resp_ready low and completes as a genuine hit
+PASS: write to 0x00004000 is accepted with resp_ready low and completes as a genuine hit
+PASS: write to 0x00006000 is accepted with resp_ready low and completes as a genuine hit
 PASS: the 6th access to set 0 reaches S_EVICT_WRITEBACK (dirty victim, per the writes above)
 PASS: controller returns to IDLE after reset mid-eviction
 PASS: req_ready is high again after reset mid-eviction
 PASS: controller returns to IDLE after reset mid-fill
 PASS: req_ready is high again after reset mid-fill
+PASS: no write (hit or write-allocate miss) raised resp_valid anywhere in the run (D-021, posted writes)
 ** ALL TESTS PASSED **
-sim/tb_l2.sv:337: $finish called at 2566000 (1ps)
+sim/tb_l2.sv:409: $finish called at 2796000 (1ps)

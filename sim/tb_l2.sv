@@ -71,6 +71,23 @@ module tb_l2;
     check(fwd_addr_log.size() == 0, msg);
   endtask
 
+  // Posted-write monitor (D-021): no write, hit or miss, may ever produce an upstream response.
+  // acc_we remembers whether the most recently accepted request was a write, so a later
+  // miss-completion response (S_UPDATE_TAG) can be attributed to the request that caused it; a
+  // same-cycle hit response belongs to the request being accepted in that same cycle.
+  logic acc_we;
+  int   write_resp_count = 0;
+  always @(posedge clk) begin
+    if (rst_n && resp_valid === 1'b1) begin
+      if (req_valid && req_ready) begin
+        if (req_we !== 1'b0) write_resp_count++;
+      end else if (acc_we !== 1'b0) begin
+        write_resp_count++;
+      end
+    end
+    if (req_valid && req_ready) acc_we <= req_we;
+  end
+
   function automatic logic [LINE_W-1:0] expected_line(input logic [mlc_pkg::ADDR_W-1:0] addr);
     logic [mlc_pkg::ADDR_W-1:0] line_base;
     expected_line = '0;
@@ -92,15 +109,39 @@ module tb_l2;
     @(posedge clk);
   endtask
 
+  // Write hit, posted (D-021). resp_ready is driven low, as L1 does for every write-through
+  // forward it sends: a write never gets a response, so it must be accepted without one. A write
+  // hit commits on its acceptance edge, so the task is done once req_valid drops. It also checks,
+  // at that edge, that the write really was accepted and really was a hit (the controller stays in
+  // S_IDLE instead of starting a miss sequence), so no call site can silently take the miss path.
   task automatic cpu_write_hit(input logic [mlc_pkg::ADDR_W-1:0] addr, input logic [mlc_pkg::DATA_W-1:0] wdata);
+    logic accepted;
     @(posedge clk);
     req_valid <= 1'b1; req_we <= 1'b1; req_addr <= addr;
-    req_wdata <= wdata; req_wstrb <= 4'b1111; resp_ready <= 1'b1;
+    req_wdata <= wdata; req_wstrb <= 4'b1111; resp_ready <= 1'b0;
+    wait (req_ready);
+    @(posedge clk);
+    accepted = req_ready; // sampled at the acceptance edge, before any state update lands
+    req_valid <= 1'b0;
+    #1;
+    check(accepted === 1'b1 && dut.state === dut.S_IDLE,
+          $sformatf("write to 0x%08h is accepted with resp_ready low and completes as a genuine hit", addr));
+  endtask
+
+  // Write miss (write-allocate), posted (D-021). resp_ready is held low throughout. After the
+  // write is accepted, the task waits for the miss sequence to start (S_TAG_CHECK) and then to run
+  // all the way back to S_IDLE (eviction if needed, fill, merge, commit) - which it must do without
+  // ever seeing resp_ready.
+  task automatic cpu_write_alloc(input logic [mlc_pkg::ADDR_W-1:0] addr, input logic [mlc_pkg::DATA_W-1:0] wdata,
+                                 input logic [mlc_pkg::BYTES_PER_WORD-1:0] wstrb);
+    @(posedge clk);
+    req_valid <= 1'b1; req_we <= 1'b1; req_addr <= addr;
+    req_wdata <= wdata; req_wstrb <= wstrb; resp_ready <= 1'b0;
     wait (req_ready);
     @(posedge clk);
     req_valid <= 1'b0;
-    wait (resp_valid);
-    @(posedge clk);
+    wait (dut.state === dut.S_TAG_CHECK);
+    wait (dut.state === dut.S_IDLE);
   endtask
 
   task automatic check(input logic cond, input string msg);
@@ -135,14 +176,8 @@ module tb_l2;
 
     begin
       logic [LINE_W-1:0] rline;
-      @(posedge clk);
-      req_valid <= 1'b1; req_we <= 1'b1; req_addr <= 32'h0000_0000;
-      req_wdata <= 32'hDEAD_BEEF; req_wstrb <= 4'b1111; resp_ready <= 1'b1;
-      wait (req_ready);
-      @(posedge clk);
-      req_valid <= 1'b0;
-      wait (resp_valid);
-      @(posedge clk);
+      // Posted write hit (D-021): completes on req_ready alone, no response.
+      cpu_write_hit(32'h0000_0000, 32'hDEAD_BEEF);
       check_fwd_empty("a write hit never forwards downstream (FR-15, write-back semantics)");
       cpu_read(32'h0000_0000, rline);
       check(rline[0 +: mlc_pkg::DATA_W] === 32'hDEAD_BEEF,
@@ -200,14 +235,9 @@ module tb_l2;
 
     begin
       logic [LINE_W-1:0] rline;
-      @(posedge clk);
-      req_valid <= 1'b1; req_we <= 1'b1; req_addr <= 32'h0000_0040; // fresh set (index 2)
-      req_wdata <= 32'hCAFE_F00D; req_wstrb <= 4'b1111; resp_ready <= 1'b1;
-      wait (req_ready);
-      @(posedge clk);
-      req_valid <= 1'b0;
-      wait (resp_valid);
-      @(posedge clk);
+      // Posted write miss (D-021) to a fresh set (index 2): the task confirms the write-allocate
+      // sequence starts (S_TAG_CHECK) and fully completes (back to S_IDLE) with resp_ready low.
+      cpu_write_alloc(32'h0000_0040, 32'hCAFE_F00D, 4'b1111);
       check_fwd_empty("write-allocate does not forward downstream immediately (write-back semantics)");
       cpu_read(32'h0000_0040, rline);
       check(rline[0 +: mlc_pkg::DATA_W] === 32'hCAFE_F00D,
@@ -246,6 +276,45 @@ module tb_l2;
             "delayed resp_ready still yields the correct hit data once accepted");
       req_valid <= 1'b0;
       @(posedge clk);
+    end
+
+    begin
+      // D-021 regression: upstream writes are posted. L1 forwards a write and treats it as done
+      // once req_ready accepts it - it never asserts resp_ready for a forwarded write. So with
+      // resp_ready held low the whole time, a write hit must still be accepted (and commit), a
+      // write-allocate miss must still run to completion, and neither may raise resp_valid.
+      logic [LINE_W-1:0] rline;
+      cpu_read(32'h0000_00E0, rline); // install 0xE0 (set 7) for the write-hit half
+
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b1; req_addr <= 32'h0000_00E0;
+      req_wdata <= 32'h0D21_0001; req_wstrb <= 4'b1111; resp_ready <= 1'b0;
+      @(posedge clk); // acceptance edge: req_ready/resp_valid read here are the pre-edge values
+      check(req_ready === 1'b1, "D-021: a write hit is accepted while resp_ready is low");
+      check(resp_valid === 1'b0, "D-021: a write hit does not raise resp_valid");
+      req_valid <= 1'b0;
+
+      @(posedge clk);
+      req_valid <= 1'b1; req_we <= 1'b1; req_addr <= 32'h0000_20E0; // set 7, second tag: a miss
+      req_wdata <= 32'h0D21_0002; req_wstrb <= 4'b1111; resp_ready <= 1'b0;
+      @(posedge clk);
+      check(req_ready === 1'b1 && resp_valid === 1'b0,
+            "D-021: a write miss is accepted with resp_ready low and without a response");
+      req_valid <= 1'b0;
+      wait (dut.state === dut.S_UPDATE_TAG);
+      #1;
+      check(resp_valid === 1'b0, "D-021: a write-allocate miss completion does not raise resp_valid");
+      @(posedge clk); #1;
+      check(dut.state === dut.S_IDLE,
+            "D-021: a write-allocate miss leaves S_UPDATE_TAG after one cycle without resp_ready");
+
+      cpu_read(32'h0000_00E0, rline);
+      check(rline[0 +: mlc_pkg::DATA_W] === 32'h0D21_0001,
+            "D-021: the posted write hit committed to the array");
+      cpu_read(32'h0000_20E0, rline);
+      check(rline[0 +: mlc_pkg::DATA_W] === 32'h0D21_0002,
+            "D-021: the posted write-allocate miss merged its write into the filled line");
+      check_fwd_empty("D-021: neither posted write forwarded anything downstream");
     end
 
     // (insert near the top of the test sequence, right after the initial reset block, or as a
@@ -331,6 +400,9 @@ module tb_l2;
       check(dut.state === dut.S_IDLE, "controller returns to IDLE after reset mid-fill");
       check(req_ready === 1'b1, "req_ready is high again after reset mid-fill");
     end
+
+    check(write_resp_count == 0,
+          "no write (hit or write-allocate miss) raised resp_valid anywhere in the run (D-021, posted writes)");
 
     if (errors == 0) begin
       $display("** ALL TESTS PASSED **");
