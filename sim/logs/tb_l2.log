@@ -49,4 +49,4 @@ PASS: req_ready is high again after reset mid-eviction
 PASS: controller returns to IDLE after reset mid-fill
 PASS: req_ready is high again after reset mid-fill
 ** ALL TESTS PASSED **
-sim/tb_l2.sv:328: $finish called at 2446000 (1ps)
+sim/tb_l2.sv:337: $finish called at 2566000 (1ps)

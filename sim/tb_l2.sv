@@ -278,16 +278,25 @@ module tb_l2;
     end
 
     begin
-      // Force every way of set 0 dirty first (see note above), so this scenario's eviction is
-      // guaranteed dirty regardless of which way PLRU actually selects as the 6th access's victim.
+      logic [LINE_W-1:0] rline;
+      // The reset pulse above cleared every valid bit, so set 0 is empty here. Install four
+      // distinct tags with read misses first (PLRU fill order from a reset tree: way0, way2, way1,
+      // way3), then write-hit each of them. Because the lines are already resident, these writes
+      // are genuine hits - they exercise the write-hit commit path on way 0 and on non-zero ways -
+      // and they leave every way of set 0 valid and dirty, so this scenario's eviction is dirty
+      // regardless of which way PLRU selects as the victim.
+      cpu_read(32'h0000_0000, rline);
+      cpu_read(32'h0000_2000, rline);
+      cpu_read(32'h0000_4000, rline);
+      cpu_read(32'h0000_6000, rline);
       cpu_write_hit(32'h0000_0000, 32'hFEED_0000);
       cpu_write_hit(32'h0000_2000, 32'hFEED_0001);
       cpu_write_hit(32'h0000_4000, 32'hFEED_0002);
       cpu_write_hit(32'h0000_6000, 32'hFEED_0003);
 
-      // Reset mid-EVICT_WRITEBACK: force an eviction by re-visiting set 0 (all 4 ways occupied,
-      // now all dirty per above) with a 6th distinct tag, and reset while it is stalled waiting
-      // for the L3 stub (hold_not_ready blocks EVICT_WRITEBACK from completing).
+      // Reset mid-EVICT_WRITEBACK: force an eviction by accessing set 0 (all 4 ways valid and
+      // dirty, per the writes above) with a fifth distinct tag, and reset while it is stalled
+      // waiting for the L3 stub (hold_not_ready blocks EVICT_WRITEBACK from completing).
       hold_not_ready = 1'b1;
       @(posedge clk);
       req_valid <= 1'b1; req_we <= 1'b0; req_addr <= 32'h0000_A000; resp_ready <= 1'b1;
