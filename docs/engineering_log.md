@@ -905,6 +905,50 @@ term.
 
 ---
 
+## D-022 — One Makefile is the single test and check entry point: a registry, quiet verdicts, `check`
+
+**2026-10-10 · Phase 3**
+
+**Problem.** The Makefile built and ran every Tier-1 testbench, but: it printed every line of every
+test, so a failure was easy to scroll past; there was no way to run one test; there was no single
+"is everything fine" command; a testbench that printed nothing would have passed; and each new test
+needed its own build rule plus an edit to two lists. Phase 3 adds eight more testbenches and several
+parameter guards, and the project owner asked for a Makefile to test and check all of it.
+
+**Options considered.**
+
+1. *Keep one explicit build rule per test* (what Phases 1 and 2 did). Simple to read, but every new
+   test is a rule, a list entry and an edit to the run loop.
+2. *A registry*: one `$(call register,<name>,<sources>)` line per test, with one generic build rule
+   and one generic run rule.
+3. *Discover `sim/tb_*.sv` automatically.* No registration at all, but source lists differ per test
+   and the package must come first, so the discovery would need a second source of truth anyway, and a
+   deleted or renamed testbench would vanish from the run silently.
+
+**Decision.** Option 2. Targets: `make check` (parameter guards, then every test, then lint, non-zero
+if any fails), `make sim`, `make test-<name>` (one test; `V=1` shows its full output), `make list`,
+`make elab`, `make lint`, `make clean`. A test passes only if `vvp` exits 0, prints no `FAIL`, and prints
+at least one `PASS`. Each run still writes its full output to `sim/logs/<name>.log`, the tracked
+evidence. `make clean` removes only the compiled binaries and `sim/elab_*`, never sources or logs.
+
+**Reason.** Adding a test is one line, so the cost of testing a new module is never a reason to skip
+it. Explicit registration keeps a missing file an error instead of a silent skip. The at-least-one-PASS
+rule means a testbench that stops checking cannot go unnoticed.
+
+**Tradeoffs.** The default output is one line per test, so the individual PASS lines are only in the
+logs (or with `V=1`). `make check` takes about two minutes, almost all of it Yosys lint, and has no
+shortcut yet; the individual targets are the shortcut. The `$(eval)` macro behind `register` is less
+obvious than a plain rule.
+
+**Result.** Verified on the Phase 2 tree before any Phase 3 code: `make sim` runs 5 testbenches and
+229 checks, identical to the previous Makefile. Failure paths checked in a throwaway copy: one broken
+expected value makes `make sim` print the failing line and exit non-zero; a registered testbench that
+prints nothing fails with `0 passed, 0 failed, exit 0`; an unknown `test-<name>` is an error.
+`make check` passes from a clean tree and leaves `git status` showing only the intended edits (the
+regenerated tracked logs are byte-identical).
+
+---
+
 *Phase 1 (L1 controllers) is complete; D-015 through D-017 were recorded during it. Phase 2 (L2
 controller, standalone) begins with D-018/D-019 above, applying every Yosys-compatibility lesson
 from Phase 1 (D-016, D-017) plus the two found here from the start, rather than rediscovering

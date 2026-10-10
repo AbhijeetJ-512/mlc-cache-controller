@@ -4,6 +4,9 @@ sim/tb_*
 !sim/tb_*.v
 sim/*.vcd
 
+# Parameter-guard check binaries from `make elab` (sources are named so this cannot match them)
+sim/elab_*
+
 # VCD waveform dumps (not logs)
 *.vcd
 
