@@ -12,7 +12,7 @@ memory-side interface. Synthesis, STA, and place-and-route all target **Sky130HD
 > the structural top `mlc_cache_top`.** `make check` runs the parameter guards, a structural check of the
 > top, 13 Tier-1 testbenches (559 checks, logs checked in under `sim/logs/`) and the Yosys elaboration
 > check (zero latches or tristates; the L2 and L3 arrays inferred as memories), all passing, in about
-> three and a half minutes (197 s measured). The integrated top **elaborates cleanly but has not been simulated**: its functional
+> about three minutes (187 s measured). The integrated top **elaborates cleanly but has not been simulated**: its functional
 > behaviour is verified only by the Phase 5 UVM tier. Synthesis, timing, area and P&R figures are
 > **NOT YET MEASURED**; the UVM tier is **NOT YET RUN (external simulator required)**.
 > Every number in this repository either cites a checked-in tool report, is labelled
@@ -107,7 +107,7 @@ make test-tb_l3        # just one testbench; V=1 also prints its full output
 make list              # the registered testbenches
 make elab              # bad parameter sets are rejected, good ones accepted (about 30 s)
 make top               # mlc_cache_top is structural only and elaborates under Icarus -Wall with no warnings (under 1 s)
-make lint              # Yosys elaboration check, zero latches/tristates (about 150 s)
+make lint              # Yosys elaboration check, zero latches/tristates (about 170 s)
 make clean             # remove build products; the tracked logs in sim/logs/ stay
 ```
 

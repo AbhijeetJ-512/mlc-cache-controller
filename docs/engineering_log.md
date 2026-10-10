@@ -1502,7 +1502,8 @@ in AXI4; that was not checked against the specification, which is not in this re
 (normal, non-cacheable, bufferable), `AXI_QOS = 0`, `AXI_REGION = 0`, `AxLOCK = 0`, as top parameters; the integrator
 overrides them. (3) The top instantiates `reset_sync`, so the requirement is met inside the IP. (4) `scripts/check_top.py`
 runs in `make check` (via `make top`) beside an Icarus `-Wall` elaboration, which must print nothing, and a Yosys
-`hierarchy -check` / `check -assert` block in `make lint`.
+`hierarchy -check` / `check -assert` block in `make lint`, run on the flattened top so that it also sees a combinational
+loop running through several units.
 
 **Reason.** Constants have to be defined somewhere; as parameters they cost nothing and the integrator keeps the choice.
 The script turns the inspection promise into a failing build: no `always`, `initial`, `generate`, loop, function,
@@ -1522,9 +1523,10 @@ check here; only the Phase 5 UVM environment sees it. This is why Phase 4 makes 
 operator in an assign, a signal driven by two units, an output left open, a port that does not exist, an unused wire, an
 expression in a connection, a ternary, a signal wired to the wrong unit) are each caught by the script, and a
 narrowed bus is caught by Icarus (`-Wall` warns on the port width; Yosys only prints a resizing warning, which is why both
-run). Yosys's `check -assert` independently catches an undriven or doubly driven signal. `make top` takes under a second
-(0.5 s measured).
-Adding the arbiter and the top to `make lint` raised it from about 90 s to 150 s.
+run). Yosys's `check -assert` independently catches an undriven or doubly driven signal. Flattened, it also finds a
+combinational loop that runs through the arbiter and L2: a copy of the arbiter whose request to L2 waits for L2's
+`req_ready` is reported as a logic loop. `make top` takes under a second (0.5 s measured). Adding the arbiter and the
+top to `make lint` raised it from about 90 s to about 170 s (166 s measured).
 
 ---
 
