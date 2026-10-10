@@ -38,6 +38,7 @@ $(call register,tb_reset_sync,sim/tb_reset_sync.sv rtl/common/reset_sync.sv)
 $(call register,tb_l1_dcache,$(PKG) sim/tb_l1_dcache.sv sim/l1_downstream_stub.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_dcache_ctrl.sv)
 $(call register,tb_l1_icache,$(PKG) sim/tb_l1_icache.sv sim/l1_downstream_stub.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_icache_ctrl.sv)
 $(call register,tb_plru,sim/tb_plru.sv rtl/replace/plru_tree.sv)
+$(call register,tb_plru_ways,sim/tb_plru_ways.sv rtl/replace/plru_tree.sv)
 $(call register,tb_l2,$(PKG) sim/tb_l2.sv sim/l3_stub.sv rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv)
 
 SIM_BINS     := $(addprefix $(SIM_DIR)/,$(TESTS))
