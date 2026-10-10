@@ -194,7 +194,9 @@ R, RESP, AW, W, B) and accepts a new request only in IDLE, so exactly one transa
 A write issues AW, then the W beats, then waits for B before returning to IDLE, so the memory sees
 a dirty eviction complete before the fill read that follows it. Writes are posted. `mem_err` is
 sticky until reset and is set by an error response (`rresp[1]`, `bresp[1]`) or an `RLAST` that
-disagrees with the beat count.
+disagrees with the beat count. The engine counts beats and has no timeout, so `mem_err` is a
+diagnostic, not a recovery: a slave that ends a read burst early (`RLAST` before the last beat)
+sets `mem_err` but leaves the engine waiting in R for beats that never come, until reset (D-031).
 
 ---
 

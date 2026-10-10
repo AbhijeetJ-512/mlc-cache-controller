@@ -24,8 +24,24 @@ PASS: SLVERR on a read sets mem_err
 PASS: mem_err stays set across later good transactions
 PASS: reset clears mem_err
 PASS: DECERR on a write response sets mem_err
+PASS: a write is not finished while BVALID is still held off
+PASS: a write is not finished while BVALID is still held off
+PASS: a write is not finished while BVALID is still held off
+PASS: the write with a delayed response reached memory
+PASS: a delayed but good write response is no error
+PASS: SLVERR on a write response sets mem_err
+PASS: a good write response after an error does not clear mem_err
+PASS: DECERR on a read sets mem_err
+PASS: an error on the middle beat of a read, and only that beat, sets mem_err
+PASS: that read still returns all of its data
+PASS: an error on the last beat of a read alone sets mem_err
+PASS: an error on the first beat of a read alone sets mem_err
+PASS: a read whose last beat lacks RLAST sets mem_err
+PASS: and still returns its data, taken by the beat count
+PASS: RLAST on a beat before the last sets mem_err
+PASS: reset clears the error again
 PASS: reset mid-read returns the engine to idle
 PASS: the engine works normally after a reset mid-burst
 PASS: no protocol violation anywhere in the run
 ** ALL TESTS PASSED **
-sim/tb_axi4_fill_engine.sv:210: $finish called at 2865000 (1ps)
+sim/tb_axi4_fill_engine.sv:277: $finish called at 5205000 (1ps)

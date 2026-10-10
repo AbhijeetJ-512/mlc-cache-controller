@@ -8,9 +8,11 @@ PASS: the L2 write-back updated the right half of L3's line
 PASS: that re-read is served by L3 alone
 PASS: write to 0x00000044 is an L2 hit
 PASS: a write-back that misses in L3 is write-allocated and reads back correctly
+PASS: the re-read is served by the line the write-back allocated: no AXI read
 PASS: write to 0x00000064 is an L2 hit
 PASS: an upper-half L2 write-back updates the upper half of L3's line
+PASS: the lower-half re-read is an L2 miss served by L3
 PASS: and leaves the lower half of that L3 line as it was
 PASS: no AXI protocol violation anywhere in the run
 ** ALL TESTS PASSED **
-sim/tb_l2_l3_chain.sv:196: $finish called at 4015000 (1ps)
+sim/tb_l2_l3_chain.sv:208: $finish called at 5075000 (1ps)

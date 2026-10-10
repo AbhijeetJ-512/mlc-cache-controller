@@ -9,6 +9,10 @@
 // formulation from the RTL's iterative bit walk - and which first asserts a few results worked
 // out by hand (2-way: way0 then victim 1; 4-way: the Phase 0 worked example; 8-way: touching
 // 0..7 in order leaves way 0 as the victim).
+//
+// Two groups of checks do not come from the tables. At 8 ways every way is steered to be the
+// victim from the definition of the policy (the tables only ever reach even ways), and the set
+// ports are exercised with different set numbers, since every other test ties them to set 0.
 module tb_plru_ways;
 
   logic clk = 1'b0;
@@ -21,8 +25,11 @@ module tb_plru_ways;
 
   plru_tree #(.WAYS(2), .SETS(4)) d2 (.clk(clk), .rst_n(rst_n), .set_index(2'd0), .victim_way(v2),
                                       .access_valid(acc2), .access_set(2'd0), .access_way(way2));
-  plru_tree #(.WAYS(8), .SETS(4)) d8 (.clk(clk), .rst_n(rst_n), .set_index(2'd0), .victim_way(v8),
-                                      .access_valid(acc8), .access_set(2'd0), .access_way(way8));
+  // The 8-way instance's set ports are variables so the per-set tests at the end can use them; every
+  // other test leaves both at set 0.
+  logic [1:0] sel8 = 2'd0, aset8 = 2'd0;
+  plru_tree #(.WAYS(8), .SETS(4)) d8 (.clk(clk), .rst_n(rst_n), .set_index(sel8), .victim_way(v8),
+                                      .access_valid(acc8), .access_set(aset8), .access_way(way8));
 
   int exp2_len1 [0:1];
   int exp2_len2 [0:3];
@@ -133,6 +140,34 @@ module tb_plru_ways;
     check(v8 === 3'd0, "8-way: after touching ways 0..7 in order, way 0 is the victim");
     touch8(0);
     check(v8 === 3'd4, "8-way: touching way 0 again moves the victim to the other half (way 4)");
+
+    // ---- 8 ways: every way can become the victim (the leaf level of the tree) ----
+    // The tables above only reach even victims (a pair of accesses never leaves a leaf bit pointing
+    // at an odd way), so a tree that dropped its leaf level, or could never choose ways 1, 3, 5 or 7,
+    // passed them. Touching w's sibling, then the nearest way across the next level, then the way
+    // across the root, steers every node on w's path to w - from the definition, not from a table.
+    for (int w = 0; w < 8; w++) begin
+      do_reset();
+      touch8(w ^ 1); touch8(w ^ 2); touch8(w ^ 4);
+      check(v8 === w[2:0], $sformatf("8-way: touching %0d, %0d, %0d makes way %0d the victim", w ^ 1, w ^ 2, w ^ 4, w));
+    end
+
+    // ---- 8 ways: each set keeps its own tree, and an access updates the set it names ----
+    do_reset();
+    aset8 = 2'd2; touch8(5);                      // set 2 only
+    sel8 = 2'd2;
+    check(v8 === exp8_len1[5][2:0], "per-set: the accessed set's victim follows the access");
+    for (int s = 0; s < 4; s++) begin
+      sel8 = s[1:0]; #1;
+      if (s != 2) check(v8 === 3'd0, $sformatf("per-set: set %0d is untouched by an access to set 2", s));
+    end
+    aset8 = 2'd3; sel8 = 2'd1; touch8(2);         // set 3 is updated while set 1 is being read
+    check(v8 === 3'd0, "per-set: the set being read does not follow an access to another set");
+    sel8 = 2'd3; #1;
+    check(v8 === exp8_len1[2][2:0], "per-set: set 3 holds its own tree");
+    sel8 = 2'd2; #1;
+    check(v8 === exp8_len1[5][2:0], "per-set: set 2 kept its tree through the access to set 3");
+    aset8 = 2'd0; sel8 = 2'd0;
 
     if (errors == 0) begin
       $display("** ALL TESTS PASSED **");

@@ -38,7 +38,9 @@ module l3_stub #(
 
   assign req_ready  = (state == S_READY) && !hold_not_ready;
   assign resp_valid = (state == S_RESP);
-  assign resp_line  = line_pattern(latched_addr);
+  // X whenever no response is on offer: a requester that takes the line a cycle after the
+  // handshake (or a cycle early) is then caught, instead of silently reading data that never changes.
+  assign resp_line  = (state == S_RESP) ? line_pattern(latched_addr) : 'x;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin

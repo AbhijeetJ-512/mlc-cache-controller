@@ -150,7 +150,7 @@ module tb_axi4_fill_engine;
     do_read(32'h0000_2040, got);
     check(got === test_line(8'h11), "a line written and read back round-trips");
 
-    // ---- backpressure on every channel ----
+    // ---- backpressure: AR, R gaps, AW and W (the write response is delayed further below) ----
     stall_ar <= 1'b1; r_gap <= 4'd3;
     resp_ready <= 1'b1;
     issue(32'h0000_3000, 1'b0, '0);
@@ -188,6 +188,73 @@ module tb_axi4_fill_engine;
     force_bresp <= 2'b00;
     check(mem_err === 1'b1, "DECERR on a write response sets mem_err");
     reset_pulse();
+
+    // ---- the write response is waited for, and each error source is seen on its own ----
+    // (final review: with BVALID the cycle after the last W beat, an engine that never waits for it,
+    // and every error test that forced one code on every beat, passed.)
+    axi.b_delay = 4;
+    resp_ready <= 1'b1;
+    issue(32'h0000_6000, 1'b1, test_line(8'h21));
+    wait (axi.wstate == axi.W_RESP);
+    repeat (3) begin
+      @(posedge clk); #1;
+      check(dut.state === dut.S_B && req_ready === 1'b0 && bvalid === 1'b0,
+            "a write is not finished while BVALID is still held off");
+    end
+    wait (req_ready);
+    axi.b_delay = 0;
+    check(mem_matches(32'h0000_6000, test_line(8'h21)), "the write with a delayed response reached memory");
+    check(mem_err === 1'b0, "a delayed but good write response is no error");
+
+    force_bresp <= 2'b10;
+    do_write(32'h0000_6040, test_line(8'h31));
+    force_bresp <= 2'b00;
+    check(mem_err === 1'b1, "SLVERR on a write response sets mem_err");
+    do_write(32'h0000_6080, test_line(8'h41));
+    check(mem_err === 1'b1, "a good write response after an error does not clear mem_err");
+    reset_pulse();
+
+    force_rresp <= 2'b11;
+    do_read(32'h0000_60C0, got);
+    force_rresp <= 2'b00;
+    check(mem_err === 1'b1, "DECERR on a read sets mem_err");
+    reset_pulse();
+
+    axi.rresp_err_beat = 7;
+    do_read(32'h0000_6100, got);
+    axi.rresp_err_beat = -1;
+    check(mem_err === 1'b1, "an error on the middle beat of a read, and only that beat, sets mem_err");
+    check(got === image_line(32'h0000_6100), "that read still returns all of its data");
+    reset_pulse();
+    axi.rresp_err_beat = 15;
+    do_read(32'h0000_6140, got);
+    axi.rresp_err_beat = -1;
+    check(mem_err === 1'b1, "an error on the last beat of a read alone sets mem_err");
+    reset_pulse();
+    axi.rresp_err_beat = 0;
+    do_read(32'h0000_6180, got);
+    axi.rresp_err_beat = -1;
+    check(mem_err === 1'b1, "an error on the first beat of a read alone sets mem_err");
+    reset_pulse();
+
+    axi.rlast_mode = 1;
+    do_read(32'h0000_61C0, got);
+    axi.rlast_mode = 0;
+    check(mem_err === 1'b1, "a read whose last beat lacks RLAST sets mem_err");
+    check(got === image_line(32'h0000_61C0), "and still returns its data, taken by the beat count");
+    reset_pulse();
+
+    axi.rlast_mode = 2;
+    resp_ready <= 1'b1;
+    issue(32'h0000_6200, 1'b0, '0);
+    repeat (40) @(posedge clk);
+    axi.rlast_mode = 0;
+    check(mem_err === 1'b1, "RLAST on a beat before the last sets mem_err");
+    // What the engine does next is not pinned: it counts beats and has no timeout, so a slave that
+    // ends a burst early leaves it waiting for beats that never come (see D-027). The reset below
+    // is what recovers it.
+    reset_pulse();
+    check(mem_err === 1'b0, "reset clears the error again");
 
     // ---- reset in the middle of a burst ----
     r_gap <= 4'd2;

@@ -7,7 +7,11 @@
 //      WLAST position, and VALID/payload stability are compared against values the testbench
 //      passes in as literals (EXP_*), never derived from the DUT. Each violation increments
 //      proto_errors and prints a line starting with "AXI PROTO:".
-// Controls (stall_*, r_gap, force_*) let a test inject backpressure and error responses.
+// Controls (stall_*, r_gap, force_*) let a test inject backpressure and error responses. Three
+// more are plain variables a test sets through a hierarchical reference (they default to a
+// well-behaved slave): b_delay, cycles BVALID is held off after the last W beat; rlast_mode,
+// 0 normal, 1 RLAST never raised, 2 RLAST raised on beat 3 and the burst ended there; and
+// rresp_err_beat, a beat number whose RRESP alone is SLVERR (-1 for none).
 module axi_mem_model #(
   parameter int DATA_W      = 32,
   parameter int MEM_WORDS   = 131072,  // DATA_W-wide words (512 KiB at 32 bits); addresses wrap modulo this
@@ -58,6 +62,7 @@ module axi_mem_model #(
 
   // Observation, read by the testbench through hierarchical references.
   int ar_count = 0, aw_count = 0, rbeat_count = 0, wbeat_count = 0, proto_errors = 0;
+  int b_delay = 0, rlast_mode = 0, rresp_err_beat = -1;
   logic        ev_is_write[$];   // one entry per accepted AR/AW, in order: 0 = read, 1 = write
   logic [31:0] ev_addr[$];
 
@@ -88,12 +93,13 @@ module axi_mem_model #(
   logic [31:0] r_addr_q;
   logic [7:0]  r_len_q, r_beat;
   logic [3:0]  r_gap_cnt;
+  wire         r_burst_end = (rlast_mode == 2) ? (r_beat == 8'd3) : (r_beat == r_len_q);
 
   assign arready = (rstate == R_IDLE) && !stall_ar;
   assign rvalid  = (rstate == R_DATA) && (r_gap_cnt == 0);
   assign rdata   = mem[widx(r_addr_q + r_beat * BYTES)];
-  assign rlast   = (r_beat == r_len_q);
-  assign rresp   = force_rresp;
+  assign rlast   = (rlast_mode == 1) ? 1'b0 : r_burst_end;
+  assign rresp   = (rresp_err_beat >= 0 && r_beat == rresp_err_beat) ? 2'b10 : force_rresp;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -111,7 +117,7 @@ module axi_mem_model #(
           if (r_gap_cnt != 0) r_gap_cnt <= r_gap_cnt - 1'b1;
           else if (rready) begin
             rbeat_count++;
-            if (rlast) rstate <= R_IDLE;
+            if (r_burst_end) rstate <= R_IDLE;
             else begin
               r_beat    <= r_beat + 1'b1;
               r_gap_cnt <= r_gap;
@@ -137,10 +143,11 @@ module axi_mem_model #(
   wstate_e     wstate;
   logic [31:0] w_addr_q;
   logic [7:0]  w_len_q, w_beat;
+  int          b_cnt;
 
   assign awready = (wstate == W_IDLE) && !stall_aw;
   assign wready  = (wstate == W_DATA) && !stall_w;
-  assign bvalid  = (wstate == W_RESP);
+  assign bvalid  = (wstate == W_RESP) && (b_cnt == 0);
   assign bresp   = force_bresp;
 
   always_ff @(posedge clk or negedge rst_n) begin
@@ -158,10 +165,13 @@ module axi_mem_model #(
           for (int b = 0; b < BYTES; b++)
             if (wstrb[b]) mem[widx(w_addr_q + w_beat * BYTES)][b*8 +: 8] <= wdata[b*8 +: 8];
           wbeat_count++;
-          if (wlast || w_beat == w_len_q) wstate <= W_RESP;
-          else w_beat <= w_beat + 1'b1;
+          if (wlast || w_beat == w_len_q) begin
+            wstate <= W_RESP;
+            b_cnt  <= b_delay;
+          end else w_beat <= w_beat + 1'b1;
         end
-        W_RESP: if (bready) wstate <= W_IDLE;
+        W_RESP: if (b_cnt != 0) b_cnt <= b_cnt - 1;
+                else if (bready) wstate <= W_IDLE;
       endcase
     end
   end

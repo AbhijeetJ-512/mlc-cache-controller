@@ -243,14 +243,12 @@ module tb_l2;
       logic [LINE_W-1:0] expected_evicted_line;
       int rd_count_before;
       // 0x0000 is already resident (way0, dirty from the DEAD_BEEF write hit). Fill the remaining
-      // 3 ways of set 0; each installs into whichever way the PLRU tree currently predicts, which
-      // is NOT way0->way1->way2->way3. Tree-PLRU: the root bit picks the victim's half (0 = ways
-      // 0/1, 1 = ways 2/3), each child bit picks the way within its pair, and every access flips
-      // the bits on its path to point away from the accessed way. The accesses to way0 so far
-      // leave root=1, left=1 (victim way2), so:
-      //   0x2000 -> way2 (root=0, right=1: victim way1)
-      //   0x4000 -> way1 (root=1, left=0:  victim way3)
-      //   0x6000 -> way3 (all bits 0:      victim way0)
+      // 3 ways of set 0. While a way is free each fill takes the lowest one (D-029), so:
+      //   0x2000 -> way1, 0x4000 -> way2, 0x6000 -> way3
+      // Tree-PLRU: the root bit picks the victim's half (0 = ways 0/1, 1 = ways 2/3), each child bit
+      // picks the way within its pair, and every access flips the bits on its path to point away
+      // from the accessed way. After way3 was touched last the root points at the 0/1 half and its
+      // child at way0, so the next eviction takes way0.
       cpu_read(32'h0000_2000, rline);
       check(rline === expected_line(32'h0000_2000), "set 0's 2nd distinct tag installs correctly");
       cpu_read(32'h0000_4000, rline);
@@ -268,21 +266,21 @@ module tb_l2;
       check_fwd_one(32'h0000_0000, expected_evicted_line,
                     "set 0, 5th access evicts the PLRU-predicted way0 (0x0000) and writes back its dirty content exactly");
 
-      // The eviction took way0 only, so 0x2000 (installed in way2) and 0x4000 (installed in way1)
+      // The eviction took way0 only, so 0x2000 (installed in way1) and 0x4000 (installed in way2)
       // must still be resident. Returned data alone cannot prove that (a miss would refetch the
       // same address-derived pattern from l3_stub), so each read must also issue no downstream
       // read. These reads come before the 0x0000 re-fetch below on purpose: that re-fetch is itself
       // a miss into this full set and evicts another way.
       rd_count_before = dn_rd_count;
       cpu_read(32'h0000_2000, rline);
-      check(rline === expected_line(32'h0000_2000), "0x2000 (way2) returns its line after the way0 eviction");
+      check(rline === expected_line(32'h0000_2000), "0x2000 (way1) returns its line after the way0 eviction");
       check(dn_rd_count == rd_count_before,
-            "0x2000 (way2) is still resident - a genuine hit, no downstream read was issued");
+            "0x2000 (way1) is still resident - a genuine hit, no downstream read was issued");
       rd_count_before = dn_rd_count;
       cpu_read(32'h0000_4000, rline);
-      check(rline === expected_line(32'h0000_4000), "0x4000 (way1) returns its line after the way0 eviction");
+      check(rline === expected_line(32'h0000_4000), "0x4000 (way2) returns its line after the way0 eviction");
       check(dn_rd_count == rd_count_before,
-            "0x4000 (way1) is still resident - a genuine hit, no downstream read was issued");
+            "0x4000 (way2) is still resident - a genuine hit, no downstream read was issued");
 
       // 0x0000 now misses again (its line was just evicted). l3_stub.sv is a pure function of
       // address with no memory of the write-back it just absorbed, so the re-fetch returns the
@@ -440,7 +438,7 @@ module tb_l2;
       // Write-back under real backpressure (mutation-driven: the only other eviction stall in this
       // file is aborted by a reset, never released). A pending write-back must stay presented,
       // unchanged, for as long as L3 holds dn_req_ready low, and must not be dropped or skipped.
-      // Set 8: four write-allocate misses fill ways 0, 2, 1, 3 (all dirty, tree back to all-0, so
+      // Set 8: four write-allocate misses fill ways 0, 1, 2, 3 (all dirty, tree back to all-0, so
       // the predicted victim is way0 = 0x0100). hold_not_ready then keeps l3_stub's req_ready low
       // while a 5th access sits in S_EVICT_WRITEBACK.
       logic [LINE_W-1:0] rline;
@@ -558,10 +556,10 @@ module tb_l2;
 
     begin
       // A free way is used before any live line is evicted (D-029). Set 9: three lines A, B, C
-      // fill three ways, then hits on A and B steer the PLRU tree away from them and at C, a live
-      // line, while the fourth way is still free. The fourth distinct tag D must take the free
-      // way. Under a PLRU-only policy (which also fills in a different order, 0, 2, 1) it would
-      // evict C instead, and the re-read of C below would go downstream.
+      // fill three ways, then hits on A and B. The fourth distinct tag D must take the free way and
+      // evict nothing. Under a PLRU-only policy, which fills in a different order (ways 0, 2, 1),
+      // those same hits steer the tree at C, a live line, while the fourth way is still free: D
+      // would evict C, and the re-read of C below would go downstream.
       logic [LINE_W-1:0] rline;
       int rd_count_before;
       cpu_read(32'h0000_0120, rline); // A
@@ -584,6 +582,64 @@ module tb_l2;
       cpu_read(32'h0000_6120, rline);
       check(dn_rd_count == rd_count_before,
             "set 9: all four lines are still resident (the free way was used, not a live line)");
+    end
+
+    begin
+      // The PLRU state is per set, and every access updates the set it touched (final review: the
+      // eviction scenarios above all start from a full in-order fill, which rewrites every bit of
+      // the set's tree, and every hit follows a miss in the same set, so a hit whose update went to
+      // the set that last missed, one tree shared by all sets, or write hits that left the tree
+      // alone all passed). Each scenario below leaves the right and a wrong policy with different
+      // victims. Four tags 0x2000 apart fill ways 0..3 in order and leave way 0 as the victim.
+      logic [LINE_W-1:0] rline;
+      int rd_count_before;
+
+      // Set 10: a hit moves the victim in the hit's own set even when the last miss was elsewhere.
+      cpu_read(32'h0000_0140, rline); cpu_read(32'h0000_2140, rline);
+      cpu_read(32'h0000_4140, rline); cpu_read(32'h0000_6140, rline);
+      cpu_read(32'h0000_0160, rline);                      // a miss in set 11 is now the latest miss
+      cpu_read(32'h0000_0140, rline);                      // hit on way 0 of set 10: victim becomes way 2
+      cpu_read(32'h0000_8140, rline);                      // a fifth tag evicts way 2, not the line just used
+      rd_count_before = dn_rd_count;
+      cpu_read(32'h0000_0140, rline);
+      check(dn_rd_count == rd_count_before,
+            "set 10: a hit after a miss in another set updates its own set's PLRU (the line used survives)");
+
+      // Sets 12 and 13: fills in one set do not move another set's victim.
+      cpu_read(32'h0000_0180, rline); cpu_read(32'h0000_2180, rline);
+      cpu_read(32'h0000_4180, rline); cpu_read(32'h0000_6180, rline);
+      cpu_read(32'h0000_01A0, rline); cpu_read(32'h0000_21A0, rline);
+      cpu_read(32'h0000_8180, rline);                      // evicts way 0 of set 12 (0x0180)
+      rd_count_before = dn_rd_count;
+      cpu_read(32'h0000_4180, rline);
+      check(dn_rd_count == rd_count_before, "set 12: fills in set 13 did not move set 12's victim");
+
+      // Set 14: a write hit counts as an access (FR-16) just as a read hit does.
+      cpu_read(32'h0000_01C0, rline); cpu_read(32'h0000_21C0, rline);
+      cpu_read(32'h0000_41C0, rline); cpu_read(32'h0000_61C0, rline);
+      cpu_write_hit(32'h0000_01C0, 32'h7777_0000);         // dirties way 0 and moves the victim to way 2
+      cpu_read(32'h0000_81C0, rline);
+      check_fwd_empty("set 14: after a write hit on way 0 the fifth tag evicts clean way 2 (no write-back)");
+      rd_count_before = dn_rd_count;
+      cpu_read(32'h0000_01C0, rline);
+      check(dn_rd_count == rd_count_before, "set 14: the line the write hit touched is still resident");
+    end
+
+    begin
+      // Partial strobes that KEEP byte 0. l3_stub's words differ from one another only in byte 0
+      // (word k of a line holds line_base + k), so strobe 0101 above, which keeps bytes 1 and 3,
+      // cannot tell a kept byte taken from the written word from one taken from word 0 of the
+      // line. Strobe 1110 keeps byte 0, so the word index shows (final review).
+      logic [LINE_W-1:0] rline;
+      cpu_read(32'h0000_01E0, rline);
+      cpu_write_hit_strb(32'h0000_01EC, 32'hAABB_CCDD, 4'b1110);        // word 3 of line 0x1E0
+      cpu_read(32'h0000_01E0, rline);
+      check(rline[3*mlc_pkg::DATA_W +: mlc_pkg::DATA_W] === 32'hAABB_CCE3,
+            "partial write hit (word 3, wstrb 1110): the kept byte 0 is word 3's own");
+      cpu_write_alloc(32'h0000_0218, 32'h1122_3344, 4'b1110);           // word 6 of line 0x200, a miss
+      cpu_read(32'h0000_0200, rline);
+      check(rline[6*mlc_pkg::DATA_W +: mlc_pkg::DATA_W] === 32'h1122_3306,
+            "partial write-allocate (word 6, wstrb 1110): the kept byte 0 is the fetched word 6's own");
     end
 
     // Second reset pulse, applied while idle: req_ready must be observed low while rst_n is
@@ -619,8 +675,8 @@ module tb_l2;
     begin
       logic [LINE_W-1:0] rline;
       // The reset pulse above cleared every valid bit, so set 0 is empty here. Install four
-      // distinct tags with read misses first (PLRU fill order from a reset tree: way0, way2, way1,
-      // way3), then write-hit each of them. Because the lines are already resident, these writes
+      // distinct tags with read misses first (fill order into an empty set: ways 0, 1, 2, 3), then
+      // write-hit each of them. Because the lines are already resident, these writes
       // are genuine hits - they exercise the write-hit commit path on way 0 and on non-zero ways -
       // and they leave every way of set 0 valid and dirty, so this scenario's eviction is dirty
       // regardless of which way PLRU selects as the victim.

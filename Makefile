@@ -51,20 +51,24 @@ SIM_BINS     := $(addprefix $(SIM_DIR)/,$(TESTS))
 TEST_TARGETS := $(addprefix test-,$(TESTS))
 
 # ---- parameter-guard cases (sim/param_guard_cases.sv) -----------------------------------------
-# good_* modules must be accepted by both tools, bad_* rejected by the guard itself. The task that
-# adds a design unit appends its sources and cases below.
+# good_* modules must be accepted by both tools, bad_* rejected by the guard itself. A bad case is
+# written name:words, where the words (~ standing for a space) must appear in the $fatal message
+# Icarus prints, so a case cannot be rejected by a different guard than the one it is for. Yosys's
+# error does not name the guard, so under Yosys only the rejection itself can be checked. The task
+# that adds a design unit appends its sources and cases below.
 ELAB_SRC       := $(PKG) rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv sim/param_guard_cases.sv
 ELAB_GOOD      := good_l2 good_l2_2way
-ELAB_BAD       := bad_l2_ways_3 bad_l2_capacity bad_l2_line_not_pow2 bad_l2_wr_not_pow2 bad_l2_sets_not_pow2
+ELAB_BAD       := bad_l2_ways_3:powers~of~two bad_l2_capacity:multiple~of bad_l2_line_not_pow2:powers~of~two \
+                  bad_l2_wr_not_pow2:powers~of~two bad_l2_sets_not_pow2:a~power~of~two
 ELAB_SRC       += rtl/mem_if/axi4_fill_engine.sv
 ELAB_GOOD      += good_engine good_engine64
-ELAB_BAD       += bad_engine_width bad_engine_beats bad_engine_line_4k
+ELAB_BAD       += bad_engine_width:must~divide bad_engine_beats:1..256~beats bad_engine_line_4k:4~KB
 ELAB_SRC       += rtl/adapter/l2_l3_width_adapter.sv
 ELAB_GOOD      += good_adapter
-ELAB_BAD       += bad_adapter_ratio
+ELAB_BAD       += bad_adapter_ratio:l2_l3_width_adapter
 ELAB_SRC       += rtl/l3/l3_cache_ctrl.sv
 ELAB_GOOD      += good_l3
-ELAB_BAD       += bad_l3_line_ratio
+ELAB_BAD       += bad_l3_line_ratio:l3_cache_ctrl
 # Degenerate sets whose width arithmetic collapses to zero-width vectors: Icarus refuses to compile
 # them before the guard's initial block can run, so for these an Icarus compile error also counts as
 # a rejection. Yosys must still hit the guard itself.
@@ -92,41 +96,46 @@ $(SIM_BINS): $(SIM_DIR)/%: $$(SRC_$$*)
 	@$(IVERILOG) -g2012 -s $* -o $@ $^
 
 # Run one testbench, keep its full output in sim/logs/<name>.log (tracked evidence), and print a
-# one-line verdict. A run passes only if vvp exits 0, no FAIL line was printed, and at least one
-# check passed (so a testbench that silently does nothing cannot pass).
+# one-line verdict. A run passes only if vvp exits 0, no FAIL, ERROR ($error), FATAL or AXI PROTO
+# line was printed, and at least one check passed (so a testbench that silently does nothing cannot
+# pass).
 .PHONY: $(TEST_TARGETS)
 $(TEST_TARGETS): test-%: $(SIM_DIR)/%
 	@mkdir -p $(LOG_DIR)
 	@$(VVP) $(SIM_DIR)/$* > $(LOG_DIR)/$*.log 2>&1; rc=$$?; \
-	pass=$$(grep -c '^PASS' $(LOG_DIR)/$*.log); fail=$$(grep -c '^FAIL' $(LOG_DIR)/$*.log); \
+	pass=$$(grep -c '^PASS' $(LOG_DIR)/$*.log); fail=$$(grep -c -E '^(FAIL|ERROR|FATAL|AXI PROTO)' $(LOG_DIR)/$*.log); \
 	if [ "$(V)" = "1" ]; then cat $(LOG_DIR)/$*.log; fi; \
 	if [ $$rc -eq 0 ] && [ $$fail -eq 0 ] && [ $$pass -gt 0 ]; then \
 	  printf '  %-24s PASS  (%s checks)\n' $* $$pass; \
 	else \
 	  printf '  %-24s FAIL  (%s passed, %s failed, exit %s)\n' $* $$pass $$fail $$rc; \
-	  grep -E '^(FAIL|AXI PROTO|FATAL)' $(LOG_DIR)/$*.log | head -20 | sed 's/^/      /'; \
+	  grep -E '^(FAIL|ERROR|FATAL|AXI PROTO)' $(LOG_DIR)/$*.log | head -20 | sed 's/^/      /'; \
 	  echo "      full log: $(LOG_DIR)/$*.log"; exit 1; \
 	fi
 
 .PHONY: sim test
 sim:
-	@echo "Tier-1 tests (Icarus):"; ok=0; bad=0; \
+	@echo "Tier-1 tests (Icarus):"; ok=0; bad=0; checks=0; \
 	for t in $(TESTS); do \
-	  if $(MAKE) --no-print-directory test-$$t; then ok=$$((ok+1)); else bad=$$((bad+1)); fi; \
+	  if out=$$($(MAKE) --no-print-directory test-$$t 2>&1); then \
+	    ok=$$((ok+1)); n=$$(echo "$$out" | sed -n 's/.*(\([0-9][0-9]*\) checks).*/\1/p' | head -1); checks=$$((checks+$${n:-0})); \
+	  else bad=$$((bad+1)); fi; \
+	  echo "$$out"; \
 	done; \
-	checks=$$(cat $(addprefix $(LOG_DIR)/,$(addsuffix .log,$(TESTS))) 2>/dev/null | grep -c '^PASS'); \
 	echo "sim: $$ok of $(words $(TESTS)) testbenches passed, $$bad failed ($$checks checks passed in total)"; \
 	[ $$bad -eq 0 ]
 test: sim
 
 .PHONY: elab
 elab:
-	@echo "Parameter guards (Icarus and Yosys must agree; a rejection must come from the guard itself):"; bad=0; \
-	for m in $(ELAB_GOOD) $(ELAB_BAD) $(ELAB_BAD_EARLY); do \
-	  want=accept; case " $(ELAB_BAD) $(ELAB_BAD_EARLY) " in *" $$m "*) want=reject;; esac; \
+	@echo "Parameter guards (Icarus and Yosys must agree; under Icarus a rejection must come from the named guard):"; bad=0; \
+	for e in $(ELAB_GOOD) $(ELAB_BAD) $(ELAB_BAD_EARLY); do \
+	  m=$${e%%:*}; why=; want=accept; \
+	  case "$$e" in *:*) want=reject; why=$$(echo "$${e#*:}" | tr '~' ' ');; esac; \
+	  case " $(ELAB_BAD_EARLY) " in *" $$m "*) want=reject;; esac; \
 	  if ! $(IVERILOG) -g2012 -s $$m -o $(SIM_DIR)/elab_$$m $(ELAB_SRC) >/dev/null 2>&1; then got_i=compile-error; \
 	  elif iout=$$($(VVP) $(SIM_DIR)/elab_$$m 2>&1); then got_i=accept; \
-	  elif echo "$$iout" | grep -q 'FATAL:.*must'; then got_i=reject; \
+	  elif echo "$$iout" | grep -q "FATAL:.*$$why"; then got_i=reject; \
 	  else got_i=other-failure; fi; \
 	  case " $(ELAB_BAD_EARLY) " in *" $$m "*) if [ "$$got_i" = compile-error ]; then got_i=reject; fi;; esac; \
 	  if yout=$$($(YOSYS) -q -p "read_verilog -sv $(ELAB_SRC); hierarchy -top $$m" 2>&1); then got_y=accept; \
@@ -142,7 +151,7 @@ elab:
 
 .PHONY: lint
 lint:
-	@$(YOSYS) -q scripts/lint.ys && echo "lint: clean (hierarchies elaborate, zero latches and tristates, cache arrays inferred as memories)"
+	@$(YOSYS) -q scripts/lint.ys && echo "lint: clean (hierarchies elaborate, zero latches and tristates, L2 and L3 arrays inferred as memories)"
 
 .PHONY: check
 check:

@@ -115,6 +115,7 @@ module tb_l2_l3_chain;
     @(posedge clk);
     req_valid <= 1'b0;
     wait (resp_valid);
+    #1;    // a response line that is only valid in the cycle of its handshake must still be valid a moment later
     rline = resp_line;
     @(posedge clk);
   endtask
@@ -132,6 +133,10 @@ module tb_l2_l3_chain;
 
   logic [255:0] got, exp_line;
   int ar0, aw0;
+
+  // Reads L2 sends to L3 (fills). A read that is meant to be served by L3 must show up here.
+  int l2_fill_count = 0;
+  always @(posedge clk) if (l2_dn_req_valid && l2_dn_req_ready && !l2_dn_req_we) l2_fill_count++;
 
   initial begin
     rst_n_l2 = 1'b0; rst_n_back = 1'b0;
@@ -175,6 +180,7 @@ module tb_l2_l3_chain;
     exp_line = image32(32'h0000_0040);
     exp_line[32 +: 32] = 32'hCAFE_F00D;
     check(got === exp_line, "a write-back that misses in L3 is write-allocated and reads back correctly");
+    check(axi.ar_count == ar0, "the re-read is served by the line the write-back allocated: no AXI read");
 
     // ---- the upper half: a write-back must land in the half its address names ----
     cpu_read(32'h0000_0060, got);                                 // L2 line 0x60 = upper half of L3 line 0x40
@@ -185,7 +191,13 @@ module tb_l2_l3_chain;
     exp_line = image32(32'h0000_0060);
     exp_line[32 +: 32] = 32'hBEEF_0001;
     check(got === exp_line, "an upper-half L2 write-back updates the upper half of L3's line");
+    // L2 still holds line 0x40 here, so a plain re-read would never reach L3: push it out first
+    // (four fresh tags in L2 set 2), then require that the re-read does go to L3 (final review).
+    for (int t = 13; t <= 16; t++)
+      cpu_read(32'h0000_0040 + t * 32'h2000, got);
+    ar0 = l2_fill_count;
     cpu_read(32'h0000_0040, got);
+    check(l2_fill_count == ar0 + 1, "the lower-half re-read is an L2 miss served by L3");
     exp_line = image32(32'h0000_0040);
     exp_line[32 +: 32] = 32'hCAFE_F00D;
     check(got === exp_line, "and leaves the lower half of that L3 line as it was");

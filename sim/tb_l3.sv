@@ -164,6 +164,7 @@ module tb_l3;
   end
 
   logic [LINE_W-1:0] got, exp_line;
+  logic [HALF_W-1:0] wpat;
   int ar0, aw0, wb0;
 
   initial begin
@@ -198,10 +199,13 @@ module tb_l3;
     check(got === exp_line, "an upper-half write hit replaces only the upper 32 B");
     check(axi.ar_count == ar0 && axi.aw_count == aw0, "a half-line write hit causes no AXI traffic");
 
-    write_half_hit(32'h0001_0000, half_pat(8'hC0), 32'h5555_5555);            // lower half, alternate bytes
+    // A strobe whose two 16-bit halves differ and which is not a palindrome, so a strobe that is
+    // bit-reversed or whose upper bytes borrow the lower half's bits (final review) both show.
+    write_half_hit(32'h0001_0000, half_pat(8'hC0), 32'hA5C3_0FF0);
     cpu_read(32'h0001_0000, got);
+    wpat = half_pat(8'hC0);
     for (int k = 0; k < HALF_B; k++)
-      exp_line[k*8 +: 8] = (k % 2 == 0) ? half_pat(8'hC0) >> (k*8) : exp_line[k*8 +: 8];
+      if (32'hA5C3_0FF0 >> k & 1) exp_line[k*8 +: 8] = wpat[k*8 +: 8];
     check(got[HALF_W-1:0] === exp_line[HALF_W-1:0], "a lower-half write honours the byte strobes");
     check(got[HALF_W +: HALF_W] === half_pat(8'hA0), "the lower-half write leaves the upper half alone");
 
@@ -239,6 +243,22 @@ module tb_l3;
       check(axi.ev_is_write[n-1] === 1'b0 && axi.ev_addr[n-1] === 32'h0004_0040,
             "the fill (AR) comes after the write-back, for the new line's address");
     end
+
+    // ---- every way of an 8-way set hits, not just way 0 ----
+    // Set 5 filled by eight write-allocates, then a write hit on the upper half of way 6 and a read
+    // of every line. A hit whose way number lost its top bit (6 would act as 2) corrupts way 2's
+    // line instead (final review).
+    for (int t = 0; t < WAYS; t++)
+      write_half_alloc(32'h0000_0140 + t * 32'h8000, half_pat(8'h60 + t[7:0]), {HALF_B{1'b1}});
+    write_half_hit(32'h0000_0160 + 6 * 32'h8000, half_pat(8'hE6), {HALF_B{1'b1}});
+    ar0 = axi.ar_count;
+    for (int t = 0; t < WAYS; t++) begin
+      cpu_read(32'h0000_0140 + t * 32'h8000, got);
+      exp_line = with_half(image_line(32'h0000_0140 + t * 32'h8000), 0, half_pat(8'h60 + t[7:0]));
+      if (t == 6) exp_line = with_half(exp_line, 1, half_pat(8'hE6));
+      check(got === exp_line, $sformatf("a hit on way %0d of set 5 returns that way's own line", t));
+    end
+    check(axi.ar_count == ar0, "all eight reads were hits: no AXI read");
 
     // ---- clean eviction: reads only, so no write-back ----
     for (int t = 0; t < WAYS; t++)

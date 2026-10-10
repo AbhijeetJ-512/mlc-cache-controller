@@ -1098,8 +1098,9 @@ been seen to fire is indistinguishable from no guard.
 
 **Decision.** Option 2, plus `make elab`. `sim/param_guard_cases.sv` lists `good_*` parameter sets that
 must be accepted and `bad_*` sets that must be rejected; `make elab` elaborates each under both tools,
-requires them to agree, and requires a rejection to carry the guard's own message. Each bad case is built
-so that exactly one guard can reject it.
+requires them to agree, and requires an Icarus rejection to carry the message of the guard the case is for
+(Yosys's error does not name the guard, so under Yosys only the rejection itself is checked). Each bad case is
+built so that exactly one guard can reject it.
 
 **Reason.** It is the only form that stops both tools, and the one-guard-per-case rule makes a deleted
 guard visible instead of being covered for by a neighbour.
@@ -1150,9 +1151,10 @@ There is no retry or recovery (`FR-26` does not require it), and a sticky flag c
 
 **Result.** New `sim/axi_mem_model.sv`, a behavioural slave whose memory image is defined per 32-bit word, with stall
 and error controls and checks of LEN, SIZE, burst type, 64 B alignment, WSTRB, WLAST and VALID/payload stability
-against literals the testbench passes in. `sim/tb_axi4_fill_engine.sv` (29 checks) covers read order, a response held
-until taken, a posted write with exact memory contents, a round trip, backpressure on every channel, SLVERR and DECERR
-latching, and reset mid-burst. On a throwaway copy, ten engine mutants (length off by one, FIXED burst, read error
+against literals the testbench passes in. `sim/tb_axi4_fill_engine.sv` (29 checks; 45 after the final review, D-031)
+covers read order, a response held until taken, a posted write with exact memory contents, a round trip, backpressure
+on AR, R, AW and W, SLVERR and DECERR latching, and reset mid-burst. The first version did not hold the write
+response off, so "waits for B" was not actually tested, and D-031 records the correction. On a throwaway copy, ten engine mutants (length off by one, FIXED burst, read error
 ignored, write error ignored, WLAST never, ready during B, wrong beat order, non-sticky `mem_err`, narrow WSTRB,
 AWREADY not awaited) were each caught, and deleting each of the three guards flipped exactly its `bad_engine_*` case.
 `make lint` is clean for the engine.
@@ -1224,7 +1226,7 @@ an invalid victim is never written back, which also covers a stale dirty bit lef
 
 **Tradeoffs.** Fill order from an empty set changes from the PLRU order (ways 0, 2, 1, 3) to 0, 1, 2, 3. Tree
 PLRU is mirror-symmetric once a set is full, so which *line* is evicted does not depend on which free way was
-used; only expectations that name a way changed. The extra gates sit on the `S_TAG_CHECK` path; their timing
+used; only expectations that name a way, or an address chosen to hit a particular way, changed. The extra gates sit on the `S_TAG_CHECK` path; their timing
 cost is **NOT YET MEASURED** (Phase 8).
 
 **Result.** `tb_l2` (112 checks): the set 6 and set 137 scenarios were re-derived for the new fill order, not
@@ -1283,6 +1285,79 @@ needed a *second* forwarded write behind the first; the adapter dropping address
 write-back to the upper half was added, because every earlier write-back hit the lower half; and adding the
 second-write step to the corruption scenario moved its timing so the stale response no longer overlapped L1's
 fill, so the scenarios were separated and every mutant was re-run after each change.
+
+---
+
+## D-031 — The independent final review of Phase 3: gaps it found and what was done about each
+
+**2026-10-10 · Phase 3**
+
+**Problem.** Before the Phase 3 pull request, a reviewer who had not seen the work (an independent opus agent with
+no access to the implementer's reasoning) re-ran `make check` and then tried to break the design with some fifty
+new mutants of its own. It found no wrong behaviour in the RTL it exercised. It found that 22 of its mutants
+survived all eleven testbenches, and that seven more were equivalent. Two survivors were data-corruption faults
+in code the tests claimed to cover: an L2 that took a miss response's data after the handshake instead of from
+its own array, which `tb_l2_l3_chain` exists to catch, and a partial write that took the bytes it keeps from word 0
+of the line. The cause was the same each time: a reference model that agrees with the stimulus by construction.
+`l3_stub` and the engine keep `resp_line` stable forever; every read sampled it in the cycle it appeared; the stub's
+words differ only in byte 0 and the partial-write tests kept bytes 1 and 3; every PLRU eviction scenario began with a
+full in-order fill, which rewrites every bit of the set's tree; and the 8-way tables, built from sequences of at most
+two accesses, only ever name even ways.
+
+**Options considered.**
+
+1. *Merge as is and list the survivors as known gaps.* Two of them are corruption bugs in the controller L2 and L3
+   share; not acceptable.
+2. *One fix wave that closes every survivor with a test derived from the definition of the behaviour, not from the
+   mutant,* then re-runs every mutant. No RTL change.
+3. *Also change the RTL where the review found a weakness.* The only candidate was the engine waiting forever after
+   an early `RLAST` (below); nothing else in the RTL was found wrong.
+
+**Decision.** Option 2, with these rulings.
+
+- *Early `RLAST`.* A slave that ends a read burst before the last beat sets `mem_err` but leaves the engine in R
+  waiting for beats that never come, which stops L3. Ruling: document it (`03_microarchitecture.md` §4) and leave the
+  engine as it is. `FR-26` asks for no recovery, the engine counts beats, and leaving R on `RLAST` instead would hand L3
+  a line with stale words and an error flag, which is no better and is new behaviour late in the phase. If wrong, the
+  cost is a hung hierarchy under a slave that violates the protocol, with `mem_err` raised. The test checks that
+  `mem_err` is set and deliberately does not pin the hang.
+- *Equivalent mutants.* Six survive on purpose, each for a reason that holds in this design: "set full" tested as
+  "top way valid" (c10) and a write-back decided by "set full" (c11), because valid bits only ever fill from way 0 upward
+  and clear all at once; the write-back data, the fill way and the valid bit taken or set a cycle early (c15, c16, c18),
+  because misses are blocking (D-004) and nothing can touch the set during one; and the adapter's half select gated by
+  write enable (a01), because a posted write never uses the response half. A seventh, "a read ends on `RLAST`" (e07),
+  was equivalent against a compliant slave and is now caught by the new early-`RLAST` test.
+- *Harness.* `make sim` totals only this run's checks (it had printed 442 with four testbenches failing to compile,
+  from stale logs); a log line starting `ERROR` (from `$error`), `FATAL` or `AXI PROTO` now fails a test; `make elab`
+  names, per bad case, the words its guard prints, so under Icarus a case cannot pass by tripping a neighbouring guard;
+  and `.gitignore` ignores binaries by their lack of an extension, so a helper named `sim/tb_*` that is not `.sv` is no
+  longer hidden.
+- *Claims.* The README and the lint message said cache arrays are inferred as memories. The lint script asserts that
+  only for L2 and L3; Yosys elaborates the L1 arrays, the PLRU state and L2's valid array as registers (five
+  "Replacing memory" warnings, all older than Phase 3), and whether L1 maps to memory is a Phase 7 question. The
+  wording now says what is asserted. The README's `make elab` and `make lint` times were re-measured.
+
+**Reason.** The review's mutants are the strongest evidence this project has that a test can see what it claims to,
+and each survivor was a place where a test only looked like it did. Fixing the tests, not the mutants, is what keeps
+the next change honest.
+
+**Tradeoffs.** `l3_stub` now drives X on `resp_line` whenever it is not responding, so any future requester that
+samples early or late fails loudly in simulation; the chain test waits one time unit before sampling a response for
+the same reason. `axi_mem_model` gained three plain variables (`b_delay`, `rlast_mode`, `rresp_err_beat`) set by
+hierarchical reference, not ports, so the testbenches that connect it with `.*` did not have to change.
+
+**Result.** Added checks: `tb_plru_ways` 82 to 97 (every way reachable as the victim at 8 ways, derived from the
+definition; per-set trees with different set numbers on the two ports), `tb_l2` 112 to 120 (PLRU per set: a hit after a
+miss elsewhere, fills in one set not moving another's victim, a write hit counting as an access; partial strobes that
+keep byte 0 for a hit and for a write-allocate), `tb_l3` 37 to 47 (a hit on every way of an 8-way set, a write hit
+on way 6, a strobe whose halves differ and that is not a palindrome), `tb_axi4_fill_engine` 29 to 45 (a held-off write
+response, SLVERR on a write, DECERR on a read, a good write not clearing `mem_err`, an error on the first, a middle and
+the last beat alone, a missing and an early `RLAST`), `tb_l2_l3_chain` 14 to 16 (a lower-half re-read that really
+reaches L3, and the re-read after the L3 reset served without an AXI read). 493 checks in 11 testbenches. Re-running the
+review's mutants on the fixed tree: all 22 survivors are caught, the six equivalents
+survive, the author's earlier mutants, the three D-030 boundary mutants and the five guard deletions are caught again.
+Stale comments in `tb_l2` that still described the pre-D-029 fill order were corrected, as were D-027, D-029 and the
+interface document's header.
 
 ---
 

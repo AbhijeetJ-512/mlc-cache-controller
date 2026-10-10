@@ -21,6 +21,16 @@ PASS: the eviction is followed by exactly one AR burst for the new line
 PASS: memory holds the evicted line: written half merged, other half original
 PASS: the write-back (AW) is to the evicted line's address
 PASS: the fill (AR) comes after the write-back, for the new line's address
+PASS: write to 0x00030160 is a hit: accepted with no miss sequence
+PASS: a hit on way 0 of set 5 returns that way's own line
+PASS: a hit on way 1 of set 5 returns that way's own line
+PASS: a hit on way 2 of set 5 returns that way's own line
+PASS: a hit on way 3 of set 5 returns that way's own line
+PASS: a hit on way 4 of set 5 returns that way's own line
+PASS: a hit on way 5 of set 5 returns that way's own line
+PASS: a hit on way 6 of set 5 returns that way's own line
+PASS: a hit on way 7 of set 5 returns that way's own line
+PASS: all eight reads were hits: no AXI read
 PASS: evicting a clean line produces no AW burst
 PASS: a fill is correct with ARREADY stalled and gaps between R beats
 PASS: an eviction is correct with AWREADY and WREADY stalled
@@ -36,4 +46,4 @@ PASS: and the refetched line is correct
 PASS: no write (hit or write-allocate) raised resp_valid anywhere in the run (D-021)
 PASS: no AXI protocol violation anywhere in the run
 ** ALL TESTS PASSED **
-sim/tb_l3.sv:311: $finish called at 9415000 (1ps)
+sim/tb_l3.sv:331: $finish called at 11515000 (1ps)

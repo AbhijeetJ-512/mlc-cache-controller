@@ -1,10 +1,11 @@
 # 04 — Interfaces
 
 **IP:** `mlc_cache_controller`
-**Document status:** Phase 1 complete — Phase 0 baseline, revised with two binding contracts
-found while building and verifying the L1 controllers (§1 `resp_ready` independence, §2 fill
-request held through `ALLOC_FILL`).
-**Revision:** 0.2 · 2026-09-29
+**Document status:** Phase 3 complete — Phase 0 baseline, revised with the binding contracts
+found while building and verifying the controllers: §1 `resp_ready` independence, §2 fill request
+held through `ALLOC_FILL`, §2 posted writes (D-021), §2 the write payload (D-024) and line-aligned
+downstream addresses (D-025).
+**Revision:** 0.3 · 2026-10-10
 
 ---
 
