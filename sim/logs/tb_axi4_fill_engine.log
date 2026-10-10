@@ -1,0 +1,31 @@
+PASS: idle after reset: req_ready is high
+PASS: idle after reset: mem_err is low
+PASS: read returns the 16 beats in address order
+PASS: a read issues exactly one AR burst and no AW burst
+PASS: a read collects exactly 16 R beats
+PASS: read burst shape is LEN 15, SIZE 2, INCR, 64 B aligned
+PASS: req_ready is low while a read is in flight
+PASS: read response is held, stable, until resp_ready
+PASS: read response is held, stable, until resp_ready
+PASS: read response is held, stable, until resp_ready
+PASS: req_ready returns after the response is taken
+PASS: req_ready is low while a write is in flight
+PASS: a write is posted: resp_valid never rises
+PASS: a write issues exactly one AW burst and no AR burst
+PASS: a write sends exactly 16 W beats
+PASS: write data reached memory in address order
+PASS: write burst shape, WSTRB and WLAST are correct
+PASS: a line written and read back round-trips
+PASS: read is correct with ARREADY stalled and gaps between R beats
+PASS: write is correct with AWREADY and WREADY stalled
+PASS: no protocol violation under backpressure (VALID and payload held)
+PASS: a read with SLVERR still returns its data
+PASS: SLVERR on a read sets mem_err
+PASS: mem_err stays set across later good transactions
+PASS: reset clears mem_err
+PASS: DECERR on a write response sets mem_err
+PASS: reset mid-read returns the engine to idle
+PASS: the engine works normally after a reset mid-burst
+PASS: no protocol violation anywhere in the run
+** ALL TESTS PASSED **
+sim/tb_axi4_fill_engine.sv:210: $finish called at 2865000 (1ps)

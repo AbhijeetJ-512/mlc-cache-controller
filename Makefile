@@ -40,6 +40,7 @@ $(call register,tb_l1_icache,$(PKG) sim/tb_l1_icache.sv sim/l1_downstream_stub.s
 $(call register,tb_plru,sim/tb_plru.sv rtl/replace/plru_tree.sv)
 $(call register,tb_plru_ways,sim/tb_plru_ways.sv rtl/replace/plru_tree.sv)
 $(call register,tb_l2,$(PKG) sim/tb_l2.sv sim/l3_stub.sv rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv)
+$(call register,tb_axi4_fill_engine,$(PKG) sim/tb_axi4_fill_engine.sv sim/axi_mem_model.sv rtl/mem_if/axi4_fill_engine.sv)
 
 SIM_BINS     := $(addprefix $(SIM_DIR)/,$(TESTS))
 TEST_TARGETS := $(addprefix test-,$(TESTS))
@@ -50,6 +51,9 @@ TEST_TARGETS := $(addprefix test-,$(TESTS))
 ELAB_SRC       := $(PKG) rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv sim/param_guard_cases.sv
 ELAB_GOOD      := good_l2 good_l2_2way
 ELAB_BAD       := bad_l2_ways_3 bad_l2_capacity bad_l2_line_not_pow2 bad_l2_wr_not_pow2 bad_l2_sets_not_pow2
+ELAB_SRC       += rtl/mem_if/axi4_fill_engine.sv
+ELAB_GOOD      += good_engine good_engine64
+ELAB_BAD       += bad_engine_width bad_engine_beats bad_engine_line_4k
 # Degenerate sets whose width arithmetic collapses to zero-width vectors: Icarus refuses to compile
 # them before the guard's initial block can run, so for these an Icarus compile error also counts as
 # a rejection. Yosys must still hit the guard itself.

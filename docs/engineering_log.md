@@ -1112,6 +1112,46 @@ for L3, the adapter and the fill engine are added with those units.
 
 ---
 
+## D-027 — AXI4 fill engine: AW before W, wait for B, posted writes, sticky `mem_err`
+
+**2026-10-10 · Phase 3**
+
+**Problem.** `FR-22`..`FR-24` and `FR-26` call for an AXI4 master that turns each L3 line request into
+exactly one fixed-length INCR burst, with a sticky error flag. The interface document fixes the signals but
+not the ordering of the write channels, what happens to a write's completion, or what counts as an error.
+
+**Options considered.**
+
+1. *Drive AW and W together.* Saves a cycle or two per write-back, but a slave is allowed to wait for AW before
+   accepting W, and some require it; presenting both at once is only safe against slaves that handle either order.
+2. *AW first, then W, then wait for B.* Always legal for a slave.
+3. *Answer a write to L3 with a response when B arrives.* Would break the posted-write rule (D-021).
+
+**Decision.** Option 2, with writes posted. States: IDLE, AR, R, RESP, AW, W, B; `req_ready` only in IDLE, so
+one transaction is in flight at a time (D-004). A read assembles the R beats into a line register in address
+order and presents it until taken. A write sends the burst (WSTRB all ones, WLAST on the last beat), waits for
+B, and only then returns to IDLE. `mem_err` is set by `rresp[1]`, by `bresp[1]` (SLVERR or DECERR), or by an
+`RLAST` that disagrees with the beat count, and clears only on reset. Elaboration guards: the bus width divides
+the line, a line takes 1..256 beats, a line fits one 4 KiB window.
+
+**Reason.** L3 issues the fill read straight after a posted dirty write-back. Because the engine does not return
+to IDLE until B arrives, the memory sees the write complete before it sees the read, with no extra ordering logic.
+AW-then-W is the order every slave must accept.
+
+**Tradeoffs.** The write address and data phases are not overlapped, which costs a cycle or two on a 16-beat burst.
+There is no retry or recovery (`FR-26` does not require it), and a sticky flag cannot say which transaction failed.
+
+**Result.** New `sim/axi_mem_model.sv`, a behavioural slave whose memory image is defined per 32-bit word, with stall
+and error controls and checks of LEN, SIZE, burst type, 64 B alignment, WSTRB, WLAST and VALID/payload stability
+against literals the testbench passes in. `sim/tb_axi4_fill_engine.sv` (29 checks) covers read order, a response held
+until taken, a posted write with exact memory contents, a round trip, backpressure on every channel, SLVERR and DECERR
+latching, and reset mid-burst. On a throwaway copy, ten engine mutants (length off by one, FIXED burst, read error
+ignored, write error ignored, WLAST never, ready during B, wrong beat order, non-sticky `mem_err`, narrow WSTRB,
+AWREADY not awaited) were each caught, and deleting each of the three guards flipped exactly its `bad_engine_*` case.
+`make lint` is clean for the engine.
+
+---
+
 *Phase 1 (L1 controllers) is complete; D-015 through D-017 were recorded during it. Phase 2 (L2
 controller, standalone) begins with D-018/D-019 above, applying every Yosys-compatibility lesson
 from Phase 1 (D-016, D-017) plus the two found here from the start, rather than rediscovering

@@ -48,3 +48,14 @@ select -assert-none t:$tribuf
 # is one of them.
 select -assert-count 3 l2_cache_ctrl/m:*
 select -assert-count 1 l2_cache_ctrl/m:data_array
+
+design -reset
+read_verilog -sv rtl/common/mlc_pkg.sv
+read_verilog -sv rtl/mem_if/axi4_fill_engine.sv
+hierarchy -top axi4_fill_engine
+proc
+opt_clean
+check -assert
+select -assert-none t:$dlatch t:$adlatch t:$dlatchsr
+tribuf
+select -assert-none t:$tribuf
