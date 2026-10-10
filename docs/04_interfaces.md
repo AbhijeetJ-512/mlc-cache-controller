@@ -77,7 +77,8 @@ is pure structural wiring (see `02_architecture.md` §3, and Open Question OQ-1 
 | `req_valid` / `req_ready` | fwd / back | 1 | Same handshake shape as CPU-side |
 | `req_addr` | fwd | `ADDR_W` | Full physical address (the downstream level derives its own index/tag from this — §2 of `02_architecture.md`) |
 | `req_we` | fwd | 1 | Set for a write-through forward (L1->L2 only) or a write-back (L2->adapter->L3, L3->AXI4) |
-| `req_line` | fwd | downstream line width | For a write-back: the full evicted line's data + which-half select (L2->L3 path only, via the adapter) |
+| `req_wdata` / `req_wstrb` | fwd | `WR_BYTES*8` / `WR_BYTES` | One posted write (D-024). L1 to L2: one word (4 B) and its byte strobes. Adapter to L3: one whole L2 line (32 B, all strobes set), which is half an L3 line, the half chosen by address bit 5 |
+| `req_line` | fwd | line width of the sender | A write-back's whole evicted line, as emitted by L2 (into the adapter) and by L3 (into the AXI4 fill engine). The adapter turns L2's into L3's `req_wdata`; this signal does not exist on a level's *upstream* port |
 | `resp_valid` / `resp_ready` | back / fwd | 1 | Fill-response handshake |
 | `resp_line` | back | downstream line width | The full fetched line |
 
@@ -102,6 +103,12 @@ write-allocate miss at L2 runs its whole fetch, merge and commit sequence behind
 returns to idle without any response; because misses are blocking (D-004), no later request can
 overtake it. A level that answers a write with `resp_valid` would deadlock against L1, whose skid
 register drains on `req_ready` alone, and could hand L1 a stale line as a later fill's data.
+
+**Contract: what a level sends downstream is line-aligned (D-025).** Every request a level issues downstream,
+fill or write-back, carries an address whose offset bits are zero (a fill's address is latched aligned, a
+write-back's is `{tag, index, 0}`). The AXI4 fill engine relies on this and has no alignment logic. This is a
+property of what a level *sends*; requests *into* a level still carry full addresses, from which that level derives
+its own index and tag. The L2 to L3 adapter's half select, address bit 5, lies above L2's offset and survives.
 
 At the L2<->L3 boundary specifically, `req_addr`/`resp_line` pass through `l2_l3_width_adapter`,
 which changes the effective payload width (L2 line = 32 B in, L3 line = 64 B on the far side)

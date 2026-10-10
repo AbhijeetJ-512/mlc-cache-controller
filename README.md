@@ -6,13 +6,12 @@ and L3 with tree-PLRU replacement, a custom valid/ready CPU-side interface, and 
 memory-side interface. Synthesis, STA, and place-and-route all target **Sky130HD** via
 **Yosys + OpenSTA + OpenROAD**, in a single Makefile matching this portfolio's `Full-Adder` flow.
 
-> **Project status: Phase 2 of 12 — L1 controllers (I$ and D$) and the L2 controller, built and
-> Tier-1-verified.** The shared L1 core (`rtl/l1/l1_cache_ctrl.sv`) with its I$/D$ wrappers, the L2
-> controller (`rtl/l2/l2_cache_ctrl.sv`) and the parameterized tree-PLRU module
-> (`rtl/replace/plru_tree.sv`) pass their Tier-1 module-level Icarus tests (`make sim`: 229 checks
-> across 5 testbenches, logs checked in under `sim/logs/`) and the Yosys elaboration check with
-> zero inferred latches (`make lint`). L3, the line-size adapter, the AXI4 fill engine and the
-> integrated `mlc_cache_top` are not written yet. Synthesis, timing, area and P&R figures are
+> **Project status: Phase 3 of 12 — everything below the CPU is built and Tier-1-verified: the L1
+> controllers (I$ and D$), the shared L2/L3 write-back controller, the tree-PLRU module, the L2 to L3
+> line-size adapter and the AXI4 fill engine.** `make check` runs the parameter guards, 9 Tier-1
+> testbenches (417 checks, logs checked in under `sim/logs/`) and the Yosys elaboration check (zero
+> inferred latches, cache arrays inferred as memories), all passing, in about two minutes. The
+> integrated `mlc_cache_top` is not written yet. Synthesis, timing, area and P&R figures are
 > **NOT YET MEASURED**; the UVM tier is **NOT YET RUN (external simulator required)**.
 > Every number in this repository either cites a checked-in tool report, is labelled
 > **NOT YET MEASURED** (a locally-runnable figure that just hasn't been produced yet), or
@@ -64,7 +63,7 @@ reasoning and the accepted tradeoff recorded in
 | [`docs/02_architecture.md`](docs/02_architecture.md) | System architecture: hierarchy diagram, per-level address partitioning (derived, not asserted), module list, data flow |
 | [`docs/03_microarchitecture.md`](docs/03_microarchitecture.md) | Per-controller FSMs, the tree-PLRU algorithm with a worked example, the line-size adapter, the AXI4 fill engine |
 | [`docs/04_interfaces.md`](docs/04_interfaces.md) | Signal-level CPU-side, inter-level, and AXI4 memory-side interface specification |
-| [`docs/engineering_log.md`](docs/engineering_log.md) | Every architectural decision: options considered, decision, reason, and the tradeoff accepted — D-001 through D-021 |
+| [`docs/engineering_log.md`](docs/engineering_log.md) | Every architectural decision: options considered, decision, reason, and the tradeoff accepted — D-001 through D-029 |
 
 ## Repository layout
 
@@ -77,27 +76,40 @@ mlc_cache_controller/
 ├── rtl/
 │   ├── common/     mlc_pkg.sv, reset_sync.sv
 │   ├── l1/         l1_cache_ctrl.sv (shared core), l1_icache_ctrl.sv, l1_dcache_ctrl.sv
-│   ├── l2/         l2_cache_ctrl.sv
+│   ├── l2/         l2_cache_ctrl.sv (the shared write-back controller: L2 as is, L3 via l3_cache_ctrl)
+│   ├── l3/         l3_cache_ctrl.sv (the same controller at L3's parameters)
+│   ├── adapter/    l2_l3_width_adapter.sv
+│   ├── mem_if/     axi4_fill_engine.sv
 │   ├── replace/    plru_tree.sv
-│   └── l3/, adapter/, mem_if/, top/                       planned, Phases 3-4
-├── sim/            Tier-1 module-level testbenches, behavioural stubs, checked-in logs (sim/logs/)
-├── scripts/        lint.ys (Yosys elaboration check); synthesis/STA/P&R scripts arrive in Phases 7-9
+│   └── top/                                                planned, Phase 4
+├── sim/            Tier-1 module-level testbenches, behavioural stubs, an AXI4 memory model,
+│                   parameter-guard cases, and checked-in logs (sim/logs/)
+├── scripts/        lint.ys (Yosys elaboration check), gen_plru_tables.py; synthesis/STA/P&R scripts
+│                   arrive in Phases 7-9
 ├── docs/           requirements, architecture, microarchitecture, interfaces, engineering log,
 │                   and per-phase implementation plans (docs/superpowers/plans/)
-├── Makefile        sim, lint, clean (flow targets arrive with their phases)
+├── Makefile        check, sim, test-<name>, elab, lint, list, clean (flow targets arrive with their phases)
 └── tb_uvm/, assertions/, formal/, constraints/, config/,
     sky130hd/, build/, pnr_results/, results/               planned, Phases 5-10
 ```
 
-## Quick start
+## Testing and checking
 
-Needs Icarus Verilog 12 and Yosys (see Toolchain below).
+Needs Icarus Verilog 12 and Yosys (see Toolchain below). Everything goes through the Makefile:
 
 ```bash
-make sim    # all Tier-1 module-level tests; writes sim/logs/*.log
-make lint   # Yosys elaboration check, zero latches/tristates (about 40 s)
-make help   # list targets
+make check             # parameter guards + every Tier-1 test + Yosys lint; non-zero exit on any failure
+make sim               # every Tier-1 testbench, one verdict line each (about 2 s)
+make test-tb_l3        # just one testbench; V=1 also prints its full output
+make list              # the registered testbenches
+make elab              # bad parameter sets are rejected, good ones accepted (about 20 s)
+make lint              # Yosys elaboration check, zero latches/tristates (about 75 s)
+make clean             # remove build products; the tracked logs in sim/logs/ stay
 ```
+
+A test passes only if its simulation exits cleanly, prints no `FAIL` line, and prints at least one
+`PASS`. Each run's full output goes to `sim/logs/<name>.log`. To add a testbench, add one
+`$(call register,<name>,<sources>)` line to the Makefile's registry (D-022).
 
 ## Verification: split by test level, not just by tool
 
@@ -133,7 +145,7 @@ See D-013 in `docs/engineering_log.md` for the full reasoning, including the dir
 ## Reproducing the numbers in this README
 
 There are no performance, area or timing numbers yet — nothing has been synthesized or measured.
-The only checked-in results so far are the Tier-1 pass/fail logs from Phases 1-2: `make sim` regenerates
+The only checked-in results so far are the Tier-1 pass/fail logs from Phases 1-3: `make sim` regenerates
 `sim/logs/*.log`, and `make lint` re-runs the Yosys elaboration check. Every command that will
 eventually produce a number is specified in the phase table in `docs/00_project_plan.md`, so
 each claim will be checkable the moment it exists — per this project's `NOT YET MEASURED` policy.

@@ -161,6 +161,14 @@ one granularity level up). An L2 write-back updates only the addressed half and 
 line's dirty bit; it never requires the other half to also be dirty or present as a precondition
 (FR-20).
 
+**As built (D-024, D-028).** The "independently write-enabled halves" are not a separate array
+organisation: the shared controller takes a write-width parameter, and L3 is elaborated with
+`WR_BYTES = 32`, so a write to L3 is a merge into a 2-slot line whose slot is address bit 5 and
+whose byte strobes are the write's strobes. An L2 write-back arrives as one posted write. The
+adapter itself has no clock and no state: it wires the request through (L2's evicted line becomes
+L3's write data, strobes all ones) and selects the addressed half of L3's response using L2's live
+request address, which L2 holds until the fill response arrives (`04_interfaces.md` §2).
+
 ---
 
 ## 4. AXI4 Fill Engine (`axi4_fill_engine`)
@@ -179,6 +187,14 @@ because every request the fill engine ever issues originates from a full-line L3
 eviction — there is no narrower or unaligned case to handle (FR-24), which is what keeps this
 module small: it has no address-alignment logic to write because misalignment cannot occur by
 construction.
+
+**As built (D-025, D-027).** "Cannot occur by construction" holds because the shared controller
+latches the address of a miss with its offset bits cleared. The engine has seven states (IDLE, AR,
+R, RESP, AW, W, B) and accepts a new request only in IDLE, so exactly one transaction is in flight.
+A write issues AW, then the W beats, then waits for B before returning to IDLE, so the memory sees
+a dirty eviction complete before the fill read that follows it. Writes are posted. `mem_err` is
+sticky until reset and is set by an error response (`rresp[1]`, `bresp[1]`) or an `RLAST` that
+disagrees with the beat count.
 
 ---
 

@@ -135,7 +135,7 @@ complete, and documented," never to a pass/fail this session cannot produce (D-0
 | | |
 |---|---|
 | **Objective** | The last-level cache, its wider line, the L2<->L3 line-size adapter, and the AXI4 fill engine to memory. |
-| **Files** | `rtl/l3/l3_cache_ctrl.sv`, `rtl/adapter/l2_l3_width_adapter.sv`, `rtl/mem_if/axi4_fill_engine.sv`, `sim/tb_l3.v`, `sim/tb_adapter.v` |
+| **Files** | `rtl/l3/l3_cache_ctrl.sv`, `rtl/adapter/l2_l3_width_adapter.sv`, `rtl/mem_if/axi4_fill_engine.sv`, `sim/tb_l3.sv`, `sim/tb_adapter.sv`, plus (as built) `sim/tb_axi4_fill_engine.sv`, `sim/axi_mem_model.sv`, `sim/tb_plru_ways.sv`, `sim/param_guard_cases.sv`, `scripts/gen_plru_tables.py`. Testbenches are `.sv`, not `.v`. |
 | **Work** | The same parameterized write-back controller as L2, elaborated at L3's parameters (FR-17, D-009); adapter sequences the single-half routing described in `03_microarchitecture.md` §3; AXI4 fill engine issues one fixed-length `INCR` burst per line fill/write-back |
 | **Tests (Tier 1)** | `tb_adapter.v`: every request routes to the correct half (address bit 5) in both fill and write-back directions, directed. `tb_l3.v`: AXI4 burst shape is fixed and known in advance (D-012), so `ARLEN`/`ARSIZE`/`AWLEN`/`AWSIZE`/burst-type are checked against hardcoded expected values by a small directed Verilog checker — no protocol-assertion framework needed because misalignment cannot occur by construction. |
 | **Done when** | `make sim` runs all Tier-1 L3/adapter cases with zero failures on Icarus. Randomized AXI4 traffic and full protocol coverage is Tier 2 (Phase 5). |
