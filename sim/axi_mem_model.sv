@@ -11,7 +11,11 @@
 // more are plain variables a test sets through a hierarchical reference (they default to a
 // well-behaved slave): b_delay, cycles BVALID is held off after the last W beat; rlast_mode,
 // 0 normal, 1 RLAST never raised, 2 RLAST raised on beat 3 and the burst ended there; and
-// rresp_err_beat, a beat number whose RRESP alone is SLVERR (-1 for none).
+// rresp_err_beat, a beat number whose RRESP alone is SLVERR (-1 for none); and aw_mode, which
+// picks which legal write-channel ordering the slave shows (AXI4 A3.3.1 lets a slave wait for
+// AWVALID or WVALID or both, so a master may depend on none of them): 0 AWREADY at once and WREADY
+// after the AW handshake, 1 AWREADY only once WVALID is also high (WREADY still after AW), 2 the
+// whole W burst is accepted first, held, and only then is AW accepted.
 module axi_mem_model #(
   parameter int DATA_W      = 32,
   parameter int MEM_WORDS   = 131072,  // DATA_W-wide words (512 KiB at 32 bits); addresses wrap modulo this
@@ -62,7 +66,7 @@ module axi_mem_model #(
 
   // Observation, read by the testbench through hierarchical references.
   int ar_count = 0, aw_count = 0, rbeat_count = 0, wbeat_count = 0, proto_errors = 0;
-  int b_delay = 0, rlast_mode = 0, rresp_err_beat = -1;
+  int b_delay = 0, rlast_mode = 0, rresp_err_beat = -1, aw_mode = 0;
   logic        ev_is_write[$];   // one entry per accepted AR/AW, in order: 0 = read, 1 = write
   logic [31:0] ev_addr[$];
 
@@ -136,30 +140,54 @@ module axi_mem_model #(
     if (arsize  !== EXP_SIZE[2:0]) proto_err($sformatf("ARSIZE %0d, expected %0d", arsize, EXP_SIZE));
     if (arburst !== 2'b01)         proto_err($sformatf("ARBURST %0d, expected INCR", arburst));
     if (araddr % EXP_ALIGN_B != 0) proto_err($sformatf("ARADDR 0x%08h not %0d-byte aligned", araddr, EXP_ALIGN_B));
+    if (araddr / BYTES + arlen >= MEM_WORDS) proto_err($sformatf("ARADDR 0x%08h burst runs past the model's memory", araddr));
   end
 
   // ---------------- write channel ----------------
-  typedef enum logic [1:0] {W_IDLE, W_DATA, W_RESP} wstate_e;
+  typedef enum logic [1:0] {W_IDLE, W_DATA, W_AWAIT, W_RESP} wstate_e;
   wstate_e     wstate;
   logic [31:0] w_addr_q;
   logic [7:0]  w_len_q, w_beat;
   int          b_cnt;
+  // aw_mode 2: W beats taken before their AW are held here until the AW arrives. Strobes are not
+  // stored; the WSTRB check below flags anything but all ones.
+  logic [DATA_W-1:0] stage [0:255];
+  logic [7:0]  st_beat;
+  wire         w_staging = (wstate == W_IDLE) && (aw_mode == 2);
+  wire  [7:0]  w_cur_beat = w_staging ? st_beat : w_beat;
+  wire  [7:0]  w_cur_len  = w_staging ? EXP_LEN[7:0] : w_len_q;
 
-  assign awready = (wstate == W_IDLE) && !stall_aw;
-  assign wready  = (wstate == W_DATA) && !stall_w;
+  assign awready = ((wstate == W_IDLE && aw_mode != 2 && (aw_mode != 1 || wvalid)) || wstate == W_AWAIT) && !stall_aw;
+  assign wready  = (wstate == W_DATA || w_staging) && !stall_w;
   assign bvalid  = (wstate == W_RESP) && (b_cnt == 0);
   assign bresp   = force_bresp;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      wstate <= W_IDLE;
+      wstate  <= W_IDLE;
+      st_beat <= '0;
     end else begin
       case (wstate)
-        W_IDLE: if (awvalid && awready) begin
-          w_addr_q <= awaddr;
-          w_len_q  <= awlen;
-          w_beat   <= '0;
-          wstate   <= W_DATA;
+        W_IDLE: begin
+          if (w_staging) begin
+            if (wvalid && wready) begin
+              stage[st_beat] <= wdata;
+              wbeat_count++;
+              if (wlast || st_beat == EXP_LEN[7:0]) wstate <= W_AWAIT;
+              else st_beat <= st_beat + 1'b1;
+            end
+          end else if (awvalid && awready) begin
+            w_addr_q <= awaddr;
+            w_len_q  <= awlen;
+            w_beat   <= '0;
+            wstate   <= W_DATA;
+          end
+        end
+        W_AWAIT: if (awvalid && awready) begin
+          for (int k = 0; k <= EXP_LEN; k++) mem[widx(awaddr + k * BYTES)] <= stage[k];
+          st_beat <= '0;
+          wstate  <= W_RESP;
+          b_cnt   <= b_delay;
         end
         W_DATA: if (wvalid && wready) begin
           for (int b = 0; b < BYTES; b++)
@@ -184,11 +212,12 @@ module axi_mem_model #(
     if (awsize  !== EXP_SIZE[2:0]) proto_err($sformatf("AWSIZE %0d, expected %0d", awsize, EXP_SIZE));
     if (awburst !== 2'b01)         proto_err($sformatf("AWBURST %0d, expected INCR", awburst));
     if (awaddr % EXP_ALIGN_B != 0) proto_err($sformatf("AWADDR 0x%08h not %0d-byte aligned", awaddr, EXP_ALIGN_B));
+    if (awaddr / BYTES + awlen >= MEM_WORDS) proto_err($sformatf("AWADDR 0x%08h burst runs past the model's memory", awaddr));
   end
 
   always @(posedge clk) if (rst_n && wvalid && wready) begin
     if (wstrb !== {BYTES{1'b1}}) proto_err($sformatf("WSTRB 0x%0h, expected all ones", wstrb));
-    if (wlast !== (w_beat == w_len_q)) proto_err($sformatf("WLAST %b on beat %0d of %0d", wlast, w_beat, w_len_q + 1));
+    if (wlast !== (w_cur_beat == w_cur_len)) proto_err($sformatf("WLAST %b on beat %0d of %0d", wlast, w_cur_beat, w_cur_len + 1));
   end
 
   // ---------------- VALID/payload stability: once raised, hold until accepted ----------------

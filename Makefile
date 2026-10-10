@@ -62,7 +62,7 @@ ELAB_BAD       := bad_l2_ways_3:powers~of~two bad_l2_capacity:multiple~of bad_l2
                   bad_l2_wr_not_pow2:powers~of~two bad_l2_sets_not_pow2:a~power~of~two
 ELAB_SRC       += rtl/mem_if/axi4_fill_engine.sv
 ELAB_GOOD      += good_engine good_engine64
-ELAB_BAD       += bad_engine_width:must~divide bad_engine_beats:1..256~beats bad_engine_line_4k:4~KB
+ELAB_BAD       += bad_engine_width:must~divide bad_engine_beats:1..256~beats bad_engine_line_4k:4~KB bad_engine_line_pow2:must~be~a~power~of~two
 ELAB_SRC       += rtl/adapter/l2_l3_width_adapter.sv
 ELAB_GOOD      += good_adapter
 ELAB_BAD       += bad_adapter_ratio:l2_l3_width_adapter

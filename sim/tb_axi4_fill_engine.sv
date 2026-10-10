@@ -256,6 +256,34 @@ module tb_axi4_fill_engine;
     reset_pulse();
     check(mem_err === 1'b0, "reset clears the error again");
 
+    // ---- AW and W are independent channels (D-032, AXI4 A3.3.1) ----
+    // A slave may hold AWREADY back until it sees WVALID, or take the whole W burst before the AW.
+    // A master that waits for AWREADY before raising WVALID hangs against the first, and one that
+    // stops when W is done without waiting for AW hangs against the second.
+    axi.aw_mode = 1;
+    do_write(32'h0000_6300, test_line(8'h51));
+    check(mem_matches(32'h0000_6300, test_line(8'h51)), "a write completes against a slave that waits for WVALID before AWREADY");
+    axi.aw_mode = 2;
+    stall_aw <= 1'b1;
+    issue(32'h0000_6340, 1'b1, test_line(8'h61));
+    repeat (40) @(posedge clk);
+    #1;
+    check(axi.wstate === axi.W_AWAIT && dut.state === dut.S_WR && awvalid === 1'b1 && wvalid === 1'b0,
+          "all 16 W beats were taken while AW was still held off, and the engine keeps AW up");
+    stall_aw <= 1'b0;
+    wait (req_ready);
+    axi.aw_mode = 0;
+    check(mem_matches(32'h0000_6340, test_line(8'h61)), "the write whose W burst came first reached memory at the right address");
+    check(axi.proto_errors == 0, "no protocol violation with either write-channel ordering");
+    // Same orderings with W stalled and a delayed response: both channels finish in either order.
+    axi.aw_mode = 1; axi.b_delay = 3; stall_w <= 1'b1;
+    issue(32'h0000_6380, 1'b1, test_line(8'h71));
+    repeat (12) @(posedge clk);
+    stall_w <= 1'b0;
+    wait (req_ready);
+    axi.aw_mode = 0; axi.b_delay = 0;
+    check(mem_matches(32'h0000_6380, test_line(8'h71)), "a write with W stalled behind an AW-waits-for-WVALID slave completes");
+
     // ---- reset in the middle of a burst ----
     r_gap <= 4'd2;
     issue(32'h0000_5000, 1'b0, '0);

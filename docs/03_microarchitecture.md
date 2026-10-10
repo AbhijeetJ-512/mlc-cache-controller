@@ -189,10 +189,12 @@ module small: it has no address-alignment logic to write because misalignment ca
 construction.
 
 **As built (D-025, D-027).** "Cannot occur by construction" holds because the shared controller
-latches the address of a miss with its offset bits cleared. The engine has seven states (IDLE, AR,
-R, RESP, AW, W, B) and accepts a new request only in IDLE, so exactly one transaction is in flight.
-A write issues AW, then the W beats, then waits for B before returning to IDLE, so the memory sees
-a dirty eviction complete before the fill read that follows it. Writes are posted. `mem_err` is
+latches the address of a miss with its offset bits cleared. The engine has six states (IDLE, AR,
+R, RESP, WR, B) and accepts a new request only in IDLE, so exactly one transaction is in flight.
+A write presents AW and the W beats together in WR and leaves it when both have completed, in either
+order, because AXI4 lets a slave hold AWREADY back until it sees WVALID (D-032); it then waits for B
+before returning to IDLE, so the memory sees a dirty eviction complete before the fill read that
+follows it. Writes are posted. `mem_err` is
 sticky until reset and is set by an error response (`rresp[1]`, `bresp[1]`) or an `RLAST` that
 disagrees with the beat count. The engine counts beats and has no timeout, so `mem_err` is a
 diagnostic, not a recovery: a slave that ends a read burst early (`RLAST` before the last beat)

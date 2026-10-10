@@ -1124,6 +1124,11 @@ for L3, the adapter and the fill engine are added with those units.
 
 **2026-10-10 · Phase 3**
 
+> **Correction (D-032).** The "AW before W" part of this decision, and the claim that AW-then-W is the order every
+> slave must accept, were wrong: AXI4 forbids a master from making WVALID wait for AWREADY. The engine now presents
+> AW and W together. The rest of this entry (waiting for B, posted writes, the sticky `mem_err`, the guards) stands; the
+> cost the Tradeoffs paragraph attributes to separating the address and data phases no longer applies.
+
 **Problem.** `FR-22`..`FR-24` and `FR-26` call for an AXI4 master that turns each L3 line request into
 exactly one fixed-length INCR burst, with a sticky error flag. The interface document fixes the signals but
 not the ordering of the write channels, what happens to a write's completion, or what counts as an error.
@@ -1367,6 +1372,55 @@ settle, so a tree that overwrote set 0 on every access passed. They now touch wa
 that mutant is caught. It also asked for the chain test's re-reads that must reach L3 to be shown to be L2 misses, for
 `make sim` to print captured output with `printf` rather than `echo` (dash's `echo` interprets backslashes), and for
 the credit for e07 to name the missing-`RLAST` test; all three were done.
+
+---
+
+## D-032 — The AXI4 engine presents AW and W together (correcting D-027)
+
+**2026-10-10 · Phase 3**
+
+**Problem.** The review of the Phase 3 pull request found that the engine raised WVALID only after AWREADY. AXI4
+(A3.3.1) forbids a master from waiting for AWREADY or WREADY before asserting AWVALID or WVALID, and it allows a slave
+to hold AWREADY back until it also sees WVALID. Against such a slave the engine waits in the address state with WVALID
+low while the slave waits for WVALID: a deadlock on the first dirty L3 eviction. D-027 had weighed presenting both
+together and rejected it because "a slave is allowed to wait for AW before accepting W", then justified the other
+order with "AW-then-W is the order every slave must accept". The first is true but harmless (the master simply holds
+WVALID and the data stable until WREADY); the second is the wrong way round, since the rule binds the master. No test
+could see it: `axi_mem_model` asserted AWREADY unconditionally and took W only after AW, so it showed exactly one of the
+legal slave behaviours, the one the engine assumed.
+
+**Options considered.**
+
+1. *Keep AW then W and document that the memory must not wait for WVALID.* Leaves a master that is not AXI4
+   compliant, and the memory behind it is not chosen yet (it is external, and the UVM tier brings its own slave).
+2. *Present AW and W together on entry to the write state, drop each when its own handshake completes, and leave
+   when both have, in either order.* The spec's own rule; costs two flag bits.
+3. *Hold the line in a buffer and send W only after AW is accepted anyway.* Option 1 with more state.
+
+**Decision.** Option 2. `S_AW` and `S_W` become one state, `S_WR`, with `aw_done_q` and `w_done_q`. AWVALID is
+high until its handshake, WVALID until the last beat is accepted, the beat counter advances on WVALID and WREADY, and
+the state moves to B once both are done, counting a handshake in that same cycle. The engine now has six states.
+
+**Reason.** It is the only form that is correct against every slave the spec allows, and a slave that does require
+the AW handshake before accepting W is still fine, because WVALID and the data are held stable until WREADY.
+
+**Tradeoffs.** Two more flip-flops and a slightly less obvious exit condition. D-027's other decisions (wait for B,
+posted writes, sticky `mem_err`, the guards) are unchanged.
+
+**Result.** `axi_mem_model` gained `aw_mode`: 0 the previous slave, 1 AWREADY only once WVALID is also high, 2 the
+whole W burst accepted and held before the AW is taken. `tb_axi4_fill_engine` 45 to 50 checks: a write against each
+mode, with AW held off for 40 cycles in mode 2 (all 16 W beats are taken first and the engine keeps AWVALID up), and a
+mode-1 write with W stalled and a delayed response. Nine engine mutants were all caught: the old behaviour (WVALID after
+the AW handshake, caught as a hang against mode 1), leaving the write state on W alone or on AW alone, flags not
+cleared for the next write, a beat counter advancing without WREADY, W done after the first beat, AWVALID never
+dropped, WLAST never, and the earlier "new request accepted in the cycle the response is taken". Two smaller findings
+from the same review were fixed alongside: the engine now requires `LINE_B` to be a power of two (otherwise an aligned
+burst could cross a 4 KiB window; new case `bad_engine_line_pow2`, and deleting the guard flips only that case), and
+the memory model flags a burst that runs past its memory instead of wrapping onto a valid line. 502 checks in 11
+testbenches. Findings from the review not acted on: the early-`RLAST` hang (D-031), `dn_req_wdata` and `dn_req_wstrb`
+being tied to zero (they predate D-024 and are harmless until someone wires them; removing them touches every
+`.*` connection), the `initial`-block form of the parameter guards (D-026), and the helper tasks copied between
+testbenches.
 
 ---
 

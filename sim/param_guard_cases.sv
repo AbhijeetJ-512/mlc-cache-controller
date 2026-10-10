@@ -35,5 +35,6 @@ module bad_l2_wr_not_pow2;    l2_cache_ctrl #(.WR_BYTES(6)) dut ();             
 module bad_engine_width;      axi4_fill_engine #(.AXI_DATA_W(48)) dut ();                       endmodule // 512 bits do not divide into 48-bit beats
 module bad_engine_beats;      axi4_fill_engine #(.AXI_DATA_W(1)) dut ();                        endmodule // 512 beats, AXI4 INCR allows 256
 module bad_engine_line_4k;    axi4_fill_engine #(.LINE_B(8192), .AXI_DATA_W(256)) dut ();       endmodule // 256 beats, but the line crosses a 4 KiB window
+module bad_engine_line_pow2;   axi4_fill_engine #(.LINE_B(96)) dut ();                             endmodule // 24 beats of 32 bits, within 4 KiB, but not a power of two
 module bad_adapter_ratio;    l2_l3_width_adapter #(.L3_LINE_B(128)) dut ();                    endmodule // 4:1 instead of 2:1 (NR-06)
 module bad_l3_line_ratio;     l3_cache_ctrl #(.LINE_B(32), .CAPACITY_B(131072), .WR_BYTES(16)) dut (); endmodule // 32 B L3 line: not 2x the L2 line (NR-06)

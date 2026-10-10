@@ -9,7 +9,7 @@ memory-side interface. Synthesis, STA, and place-and-route all target **Sky130HD
 > **Project status: Phase 3 of 12 — everything below the CPU is built and Tier-1-verified: the L1
 > controllers (I$ and D$), the shared L2/L3 write-back controller, the tree-PLRU module, the L2 to L3
 > line-size adapter and the AXI4 fill engine.** `make check` runs the parameter guards, 11 Tier-1
-> testbenches (497 checks, logs checked in under `sim/logs/`) and the Yosys elaboration check (zero
+> testbenches (502 checks, logs checked in under `sim/logs/`) and the Yosys elaboration check (zero
 > latches or tristates; the L2 and L3 arrays inferred as memories), all passing, in about two minutes. The
 > integrated `mlc_cache_top` is not written yet. Synthesis, timing, area and P&R figures are
 > **NOT YET MEASURED**; the UVM tier is **NOT YET RUN (external simulator required)**.
@@ -63,7 +63,7 @@ reasoning and the accepted tradeoff recorded in
 | [`docs/02_architecture.md`](docs/02_architecture.md) | System architecture: hierarchy diagram, per-level address partitioning (derived, not asserted), module list, data flow |
 | [`docs/03_microarchitecture.md`](docs/03_microarchitecture.md) | Per-controller FSMs, the tree-PLRU algorithm with a worked example, the line-size adapter, the AXI4 fill engine |
 | [`docs/04_interfaces.md`](docs/04_interfaces.md) | Signal-level CPU-side, inter-level, and AXI4 memory-side interface specification |
-| [`docs/engineering_log.md`](docs/engineering_log.md) | Every architectural decision: options considered, decision, reason, and the tradeoff accepted — D-001 through D-031 |
+| [`docs/engineering_log.md`](docs/engineering_log.md) | Every architectural decision: options considered, decision, reason, and the tradeoff accepted — D-001 through D-032 |
 
 ## Repository layout
 

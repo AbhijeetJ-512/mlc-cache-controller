@@ -40,8 +40,13 @@ PASS: a read whose last beat lacks RLAST sets mem_err
 PASS: and still returns its data, taken by the beat count
 PASS: RLAST on a beat before the last sets mem_err
 PASS: reset clears the error again
+PASS: a write completes against a slave that waits for WVALID before AWREADY
+PASS: all 16 W beats were taken while AW was still held off, and the engine keeps AW up
+PASS: the write whose W burst came first reached memory at the right address
+PASS: no protocol violation with either write-channel ordering
+PASS: a write with W stalled behind an AW-waits-for-WVALID slave completes
 PASS: reset mid-read returns the engine to idle
 PASS: the engine works normally after a reset mid-burst
 PASS: no protocol violation anywhere in the run
 ** ALL TESTS PASSED **
-sim/tb_axi4_fill_engine.sv:277: $finish called at 5205000 (1ps)
+sim/tb_axi4_fill_engine.sv:305: $finish called at 6185000 (1ps)
