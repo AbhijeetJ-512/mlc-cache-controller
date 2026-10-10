@@ -142,7 +142,8 @@ module l2_cache_ctrl #(
 
   // --- victim register (D-018: one register, never a per-level buffer - eviction always
   // completes before the fill it triggered begins) ---
-  logic [WAY_SEL_W-1:0] victim_way;      // combinational, from plru_tree, valid while in S_TAG_CHECK
+  logic [WAY_SEL_W-1:0] plru_victim;     // the PLRU tree's choice
+  logic [WAY_SEL_W-1:0] victim_way;      // combinational, valid while in S_TAG_CHECK
   logic [WAY_SEL_W-1:0] victim_way_latched;
   logic [TAG_W-1:0]     victim_tag_latched;
   logic [LINE_W-1:0]    victim_line_latched;
@@ -152,7 +153,7 @@ module l2_cache_ctrl #(
   logic [INDEX_W-1:0]   plru_access_set;
   logic [WAY_SEL_W-1:0] plru_access_way;
 
-  // victim_way (the plru_tree's combinational output) is only ever consumed once, in
+  // victim_way (built from the plru_tree's combinational output) is only ever consumed once, in
   // commit_tag_check's latch below - and by the time the FSM is actually in S_TAG_CHECK,
   // miss_index is already correctly latched (set on the same edge as the S_IDLE->S_TAG_CHECK
   // transition). So set_index can simply always be miss_index: its value is don't-care in every
@@ -161,11 +162,28 @@ module l2_cache_ctrl #(
     .clk          (clk),
     .rst_n        (rst_n),
     .set_index    (miss_index),
-    .victim_way   (victim_way),
+    .victim_way   (plru_victim),
     .access_valid (plru_access_valid),
     .access_set   (plru_access_set),
     .access_way   (plru_access_way)
   );
+
+  // Victim choice: a free (invalid) way is used before any live line is evicted; only a full set
+  // asks the PLRU tree. Without this, hits can steer the tree at a live way while an invalid way
+  // is still free.
+  function automatic logic [WAY_SEL_W-1:0] lowest_set(input logic [WAYS-1:0] v);
+    int idx;
+    idx = 0;
+    for (int w = WAYS - 1; w >= 0; w--) begin
+      if (v[w]) idx = w;
+    end
+    lowest_set = idx[WAY_SEL_W-1:0];
+  endfunction
+  logic [WAYS-1:0] set_valid;
+  always_comb begin
+    for (int w = 0; w < WAYS; w++) set_valid[w] = valid_array[miss_index][w];
+  end
+  assign victim_way = (&set_valid) ? plru_victim : lowest_set(~set_valid);
 
   logic [LINE_W-1:0] fill_line_merged;
   always_comb begin

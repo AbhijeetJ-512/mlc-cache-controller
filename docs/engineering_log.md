@@ -1198,6 +1198,48 @@ valid forced low, write data from the wrong source) were each caught, and deleti
 
 ---
 
+## D-029 — Victim selection uses a free way before it asks the PLRU tree
+
+**2026-10-10 · Phase 3**
+
+**Problem.** The controller took its victim only from the PLRU tree and never looked at the valid bits. The
+Phase 2 pull request review found, and a simulation reproduced, that hits can steer the tree at a live line
+while an invalid way is still free: fill A, B, C into a 4-way set (ways 0, 2, 1), hit A, then hit B, and the tree
+points at C's way; a fourth tag D evicts C and leaves way 3 invalid. Data stays correct, but capacity is
+wasted and a dirty line can be written back for nothing. The same module is L3.
+
+**Options considered.**
+
+1. *Leave it.* Correct, but a visible inefficiency in a replacement policy that is a headline feature.
+2. *Use the lowest invalid way if the set has one, otherwise the PLRU victim.*
+3. *Make the tree aware of invalid ways* by masking its choice. More logic inside a module that is verified
+   exhaustively as it stands.
+
+**Decision.** Option 2: `victim_way = (all ways valid) ? plru_victim : lowest invalid way`. The tree is still updated
+on every fill and every hit.
+
+**Reason.** It is the usual rule, and it costs a priority encoder over the valid bits of one set, which are already
+being read for the hit check. `S_TAG_CHECK` is unchanged: it already requires `valid && dirty` to write back, so
+an invalid victim is never written back, which also covers a stale dirty bit left by a reset (D-019).
+
+**Tradeoffs.** Fill order from an empty set changes from the PLRU order (ways 0, 2, 1, 3) to 0, 1, 2, 3. Tree
+PLRU is mirror-symmetric once a set is full, so which *line* is evicted does not depend on which free way was
+used; only expectations that name a way changed. The extra gates sit on the `S_TAG_CHECK` path; their timing
+cost is **NOT YET MEASURED** (Phase 8).
+
+**Result.** `tb_l2` (112 checks): the set 6 and set 137 scenarios were re-derived for the new fill order, not
+weakened (set 6 now hits way 1 and expects the write-backs of way 2 then way 0; set 137 gained one clean
+eviction so the partially written line, now in way 1, is the next victim); a new "set 9" scenario fills three
+lines, hits two, adds a fourth and requires all four to still be resident with no downstream read, plus a direct
+check of the valid bits that pins "lowest free way first". Run against the previous PLRU-only controller, the
+updated `tb_l2` fails four checks (set 6 twice, set 137 once, set 9 once). On a throwaway copy four mutants of
+the new logic were caught by `tb_l2` (highest free way, live request set instead of the latched one, validity
+ignored, always the lowest way); the highest-free-way mutant is caught only by the internal valid-bit check
+because it is invisible at the interface, and survives `tb_l3` alone for the same reason. `tb_l3` and the L1 tests
+are unchanged and pass; `make lint` is clean.
+
+---
+
 *Phase 1 (L1 controllers) is complete; D-015 through D-017 were recorded during it. Phase 2 (L2
 controller, standalone) begins with D-018/D-019 above, applying every Yosys-compatibility lesson
 from Phase 1 (D-016, D-017) plus the two found here from the start, rather than rediscovering

@@ -400,16 +400,17 @@ module tb_l2;
       // victim's half (0 = ways 0/1, 1 = ways 2/3), each child bit picks the way within its pair,
       // and an access flips every bit on its path to point away from the accessed way.
       //
-      // Four write-allocate misses fill ways 0, 2, 1, 3 in that order, all dirty, each with
-      // distinct data in a distinct non-zero word, and leave the tree back at all-0 (victim way0):
-      //   0x00C0 -> way0, word 1 = 1111_1111      0x40C0 -> way1, word 6 = 3333_3333
-      //   0x20C0 -> way2, word 2 = 2222_2222      0x60C0 -> way3, word 7 = 4444_4444
-      // A read hit on 0x40C0 (way1: non-zero, and not the predicted victim) sets root=1, left=0,
+      // Four write-allocate misses fill ways 0, 1, 2, 3 in that order (a free way is always used
+      // before a live line is evicted, D-029), all dirty, each with distinct data in a distinct
+      // non-zero word, and leave the tree at all-0 (victim way0):
+      //   0x00C0 -> way0, word 1 = 1111_1111      0x40C0 -> way2, word 6 = 3333_3333
+      //   0x20C0 -> way1, word 2 = 2222_2222      0x60C0 -> way3, word 7 = 4444_4444
+      // A read hit on 0x20C0 (way1: non-zero, and not the predicted victim) sets root=1, left=0,
       // moving the predicted victim from way0 to way2. So the 5th access (0x80C0) must write back
-      // 0x20C0 (way2); without that hit's PLRU update it would take way0 (0x00C0). Filling way2 then
+      // 0x40C0 (way2); without that hit's PLRU update it would take way0 (0x00C0). Filling way2 then
       // sets root=0, right=1 (victim way0), so the 6th access (0xA0C0) must write back 0x00C0. A
       // controller that updated PLRU as if the hit were on way0 would agree on the 5th access but
-      // pick way1 (0x40C0) on the 6th.
+      // pick way1 (0x20C0) on the 6th.
       logic [LINE_W-1:0] rline;
       int rd_count_before;
       cpu_write_alloc(32'h0000_00C4, 32'h1111_1111, 4'b1111); // 0x00C0 word 1
@@ -419,15 +420,15 @@ module tb_l2;
       check_fwd_empty("set 6: four write-allocate fills into an empty set produce no write-back");
 
       rd_count_before = dn_rd_count;
-      cpu_read(32'h0000_40C0, rline);
-      check(rline === expected_line_with_word(32'h0000_40C0, 6, 32'h3333_3333),
-            "set 6: a read hit on way1 (0x40C0) returns way1's own line, with its write-allocated word 6");
-      check(dn_rd_count == rd_count_before, "set 6: the read of 0x40C0 (way1) is a genuine hit (no downstream read)");
+      cpu_read(32'h0000_20C0, rline);
+      check(rline === expected_line_with_word(32'h0000_20C0, 2, 32'h2222_2222),
+            "set 6: a read hit on way1 (0x20C0) returns way1's own line, with its write-allocated word 2");
+      check(dn_rd_count == rd_count_before, "set 6: the read of 0x20C0 (way1) is a genuine hit (no downstream read)");
 
       cpu_read(32'h0000_80C0, rline);
       check(rline === expected_line(32'h0000_80C0), "set 6: 5th access (0x80C0) installs correctly");
-      check_fwd_one(32'h0000_20C0, expected_line_with_word(32'h0000_20C0, 2, 32'h2222_2222),
-                    "set 6: 5th access writes back way2 (0x20C0), the victim after the way1 hit's PLRU update, with its dirty content exactly");
+      check_fwd_one(32'h0000_40C0, expected_line_with_word(32'h0000_40C0, 6, 32'h3333_3333),
+                    "set 6: 5th access writes back way2 (0x40C0), the victim after the way1 hit's PLRU update, with its dirty content exactly");
 
       cpu_read(32'h0000_A0C0, rline);
       check(rline === expected_line(32'h0000_A0C0), "set 6: 6th access (0xA0C0) installs correctly");
@@ -485,7 +486,7 @@ module tb_l2;
       // kept byte is distinguishable from a written one.
       //
       // Write HIT on a non-zero way, set 137 (same-set tag stride 0x2000): 0x1234_5120 fills way0
-      // and 0x1234_7120 fills way2. Word 5 of 0x1234_7120's line is 0x1234_7125; writing
+      // and 0x1234_7120 fills way1. Word 5 of 0x1234_7120's line is 0x1234_7125; writing
       // 0xA1B2_C3D4 with wstrb 0101 must give 0x12B2_71D4 (bytes 0/2 = D4/B2 new, 1/3 = 71/12 kept).
       logic [LINE_W-1:0]          rline;
       logic [LINE_W-1:0]          orig;
@@ -496,7 +497,7 @@ module tb_l2;
 
       cpu_read(32'h1234_5120, rline);
       cpu_read(32'h1234_7120, rline);
-      cpu_write_hit_strb(32'h1234_7134, 32'hA1B2_C3D4, 4'b0101); // word 5 of 0x1234_7120 (way2)
+      cpu_write_hit_strb(32'h1234_7134, 32'hA1B2_C3D4, 4'b0101); // word 5 of 0x1234_7120 (way1)
       check_fwd_empty("partial write hit (word 5, wstrb 0101) forwards nothing downstream");
       rd_count_before = dn_rd_count;
       cpu_read(32'h1234_7120, rline);
@@ -514,20 +515,24 @@ module tb_l2;
       end
       check(others_ok, "partial write hit: every other word of the line is unchanged");
 
-      // Evict that line so its merged content, and the dirty bit the write hit set on way2 (not
-      // way0), are also checked at the receiving end. 0x1234_9120 fills way1 and 0x1234_B120 fills
+      // Evict that line so its merged content, and the dirty bit the write hit set on way1 (not
+      // way0), are also checked at the receiving end. 0x1234_9120 fills way2 and 0x1234_B120 fills
       // way3, leaving the tree at all-0 (victim way0). 0x1234_D120 then evicts way0 (0x1234_5120,
-      // clean: no write-back) and leaves root=1, right=0 (victim way2), so 0x1234_F120 evicts way2
-      // (0x1234_7120), which is dirty only because of the partial write hit.
+      // clean: no write-back) and leaves root=1, left=1, right=0 (victim way2), so 0x1234_F120
+      // evicts way2 (0x1234_9120, also clean) and leaves root=0, left=1, right=1 (victim way1). The
+      // next access, 0x1235_1120, therefore evicts way1 (0x1234_7120), which is dirty only because
+      // of the partial write hit.
       cpu_read(32'h1234_9120, rline);
       cpu_read(32'h1234_B120, rline);
       cpu_read(32'h1234_D120, rline);
       check_fwd_empty("set 137: evicting the clean way0 line (0x1234_5120) produces no write-back");
       cpu_read(32'h1234_F120, rline);
+      check_fwd_empty("set 137: evicting the clean way2 line (0x1234_9120) produces no write-back");
+      cpu_read(32'h1235_1120, rline);
       exp_merged = orig;
       exp_merged[5*mlc_pkg::DATA_W +: mlc_pkg::DATA_W] = 32'h12B2_71D4;
       check_fwd_one(32'h1234_7120, exp_merged,
-                    "set 137: evicting way2 writes back the partially written line exactly");
+                    "set 137: evicting way1 writes back the partially written line exactly");
 
       // Write-allocate MISS, set 138: 0x5678_9154 is word 5 of the line at 0x5678_9140, whose
       // fetched word 5 is 0x5678_9145. Writing 0x5E6F_7A8B with wstrb 0101 must give 0x566F_918B
@@ -549,6 +554,36 @@ module tb_l2;
           others_ok = 1'b0;
       end
       check(others_ok, "partial write-allocate: every other word of the fetched line is unchanged");
+    end
+
+    begin
+      // A free way is used before any live line is evicted (D-029). Set 9: three lines A, B, C
+      // fill three ways, then hits on A and B steer the PLRU tree away from them and at C, a live
+      // line, while the fourth way is still free. The fourth distinct tag D must take the free
+      // way. Under a PLRU-only policy (which also fills in a different order, 0, 2, 1) it would
+      // evict C instead, and the re-read of C below would go downstream.
+      logic [LINE_W-1:0] rline;
+      int rd_count_before;
+      cpu_read(32'h0000_0120, rline); // A
+      cpu_read(32'h0000_2120, rline); // B
+      cpu_read(32'h0000_4120, rline); // C
+      // Which free way is taken is internal (tree-PLRU is mirror-symmetric once a set is full, so
+      // filling high-first would evict the same lines), but D-029 chooses the lowest free way, so
+      // pin it by looking at the valid bits directly, as the stale-dirty test below does.
+      check(dut.valid_array[9][0] === 1'b1 && dut.valid_array[9][1] === 1'b1 &&
+            dut.valid_array[9][2] === 1'b1 && dut.valid_array[9][3] === 1'b0,
+            "set 9: three fills take the lowest free ways 0, 1 and 2 (D-029)");
+      cpu_read(32'h0000_0120, rline); // hit A
+      cpu_read(32'h0000_2120, rline); // hit B
+      cpu_read(32'h0000_6120, rline); // D
+      check_fwd_empty("set 9: a fourth tag into a set with a free way evicts nothing");
+      rd_count_before = dn_rd_count;
+      cpu_read(32'h0000_0120, rline);
+      cpu_read(32'h0000_2120, rline);
+      cpu_read(32'h0000_4120, rline);
+      cpu_read(32'h0000_6120, rline);
+      check(dn_rd_count == rd_count_before,
+            "set 9: all four lines are still resident (the free way was used, not a live line)");
     end
 
     // Second reset pulse, applied while idle: req_ready must be observed low while rst_n is
