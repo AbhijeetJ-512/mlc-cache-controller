@@ -138,7 +138,7 @@ line.
 | Module | Responsibility | Does NOT do |
 |---|---|---|
 | `l1_icache_ctrl` / `l1_dcache_ctrl` | Direct-mapped write-through cache: tag compare, hit data return, write-through forwarding, miss request to L2 | No replacement policy (nothing to replace among 1 way); no write-back state |
-| `l1_l2_arbiter` | Lets the two L1 controllers share L2's single upstream port: shows L2 one request at a time (round-robin on a tie), remembers which L1 owns an outstanding read, and routes the response and its `resp_ready` to that owner | No cache state, no addresses decoded, never changes a request; adds no cycle |
+| `l1_l2_arbiter` | Lets the two L1 controllers share L2's single upstream port: shows L2 one request at a time (round-robin on a tie), remembers which L1 owns an outstanding read, and routes the response and its `resp_ready` to that owner | No cache state, no addresses decoded, never changes a request; no register on the request or response path (what that costs in latency is not measured, PF-03) |
 | `l2_cache_ctrl` | 4-way set-associative write-back cache: tag compare across ways, PLRU-based victim selection, dirty tracking, eviction write-back to the adapter | Does not know about L1's existence or count (a request looks the same regardless of which L1 instance issued it) |
 | `l2_l3_width_adapter` | Splits one L3 line into 2 ordered L2-line beats on fill; merges 2 L2-line write-backs into one (possibly partial-dirty) L3 line update | No tag/valid/dirty state of its own — it is a sequencer/router, not a cache |
 | `l3_cache_ctrl` | 8-way set-associative write-back cache, same controller design as L2 parameterized wider; drives the AXI4 fill engine on its own misses/evictions | Does not talk AXI4 directly (that is `axi4_fill_engine`'s job) |

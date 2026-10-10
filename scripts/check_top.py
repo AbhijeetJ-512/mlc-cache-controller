@@ -12,7 +12,10 @@ else. This script turns that into a check that fails the build:
     every top-level input is read, every top-level output is driven exactly once;
   * every signal connects exactly the instances the architecture says it joins (the BOUNDARIES
     table below, written once from 02_architecture.md section 1), so a signal wired to the wrong
-    unit is caught even when its width happens to fit.
+    unit is caught even when its width happens to fit;
+  * every port is wired to a signal named for it (`.req_valid(l2_req_valid)`, `.dn_resp_line(l2_resp_line)`:
+    the names agree once the boundary prefixes are stripped), so two same-width signals swapped
+    between the same pair of units, or the clock and the reset crossed on one unit, are caught.
 
 Widths are not checked here: Icarus (-Wall) and Yosys (hierarchy -check) do that, see the Makefile.
 Usage: check_top.py [top.sv] [rtl-dir...]   (defaults: rtl/top/mlc_cache_top.sv, rtl)
@@ -30,7 +33,7 @@ errors = []
 # (signal-name regex, set of instance names). Every declared signal must match one row.
 ALL = {"u_reset", "u_l1i", "u_l1d", "u_arb", "u_l2", "u_adapter", "u_l3", "u_axi"}
 BOUNDARIES = [
-    (r"clk", None),                                      # the clock reaches every clocked unit; not checked
+    (r"clk", ALL - {"u_adapter"}),                       # the clock reaches every clocked unit; the adapter has none
     (r"rst_n", {"u_reset"}),
     (r"rst_n_sync", ALL - {"u_adapter"}),                 # driven by the synchroniser, read by every stateful unit
     (r"i_(req|resp)_\w+", {"u_l1i"}),                    # CPU fetch port
@@ -135,10 +138,33 @@ for m in re.finditer(r"^\s*(?:logic|wire)\b\s*(?:\[[^\]]*\])?\s*([^;]+);", src, 
 
 inst_re = re.compile(r"^\s*(\w+)\s+(?:#\s*\(.*?\)\s*)?(\w+)\s*\(", flags=re.M | re.S)
 touches = {}   # signal -> set of instance names it is connected to
+
+# A port and the signal wired to it must agree on the name once the boundary prefixes are removed.
+# The few ports whose job is not their name are listed in EXACT.
+PORT_PREFIXES = ("dn_", "up0_", "up1_", "l2_", "l3_")
+SIG_PREFIXES = ("i_dn_", "d_dn_", "l2_dn_", "l3_dn_", "l2_", "l3_", "i_", "d_", "m_axi_")
+EXACT = {"clk": "clk", "rst_n": "rst_n_sync", "async_rst_n": "rst_n"}
+
+
+def strip_prefix(name, prefixes):
+    for pre in prefixes:
+        if name.startswith(pre):
+            return name[len(pre):]
+    return name
+
+
+def names_agree(port, sig):
+    if port in EXACT:
+        return sig == EXACT[port]
+    return strip_prefix(port, PORT_PREFIXES) == strip_prefix(sig, SIG_PREFIXES)
+
 n_inst = 0
 for m in inst_re.finditer(src):
     mod, inst = m.group(1), m.group(2)
-    if mod not in all_mods or mod == top_mod:
+    if mod == top_mod:
+        continue
+    if mod not in all_mods:
+        err(f"{inst}: instance of {mod}, which is not a module defined under {', '.join(map(str, RTL_DIRS))}")
         continue
     n_inst += 1
     start = m.end() - 1
@@ -162,6 +188,8 @@ for m in inst_re.finditer(src):
             err(f"{inst} ({mod}): .{p}({expr}) names an undeclared signal")
         bump(drivers if ports[p] == "output" else readers, expr)
         touches.setdefault(expr, set()).add(inst)
+        if not names_agree(p, expr):
+            err(f"{inst} ({mod}): .{p}({expr}) wires a port to a signal that is not named for it")
 
 if n_inst == 0:
     err(f"{TOP}: found no instances; the checker could not parse the file")

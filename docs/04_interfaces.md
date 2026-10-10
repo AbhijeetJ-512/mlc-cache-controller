@@ -118,7 +118,7 @@ outstanding, and routes the response of a read to the requester that asked, with
 A read that hits is answered in its accept cycle and belongs to the requester being accepted; a read that missed is
 remembered until its response is taken. Writes are posted and are never remembered. A requester that is not shown to L2
 sees `req_ready` low. The response line is not routed: it fans out to both L1 controllers, and only the one given
-`resp_valid` uses it. The arbiter adds no cycle.
+`resp_valid` uses it. The arbiter puts no register on the request or response path (derived from the RTL; no latency has been measured, PF-03).
 
 At the L2<->L3 boundary specifically, `req_addr`/`resp_line` pass through `l2_l3_width_adapter`,
 which changes the effective payload width (L2 line = 32 B in, L3 line = 64 B on the far side)
@@ -184,13 +184,18 @@ into an array it hasn't finished invalidating) and high the cycle after `rst_n` 
 matching CR-04. In-flight AXI4 transactions are not gracefully drained on reset — this is a
 documented scope boundary (CR-04), not an oversight.
 
+At `mlc_cache_top` the external `rst_n` goes through `reset_sync` (D-034): assertion is still asynchronous, but the units
+leave reset on the second clock edge after `rst_n` deasserts, so `req_ready` rises up to two cycles after the
+deassertion, not one. That follows from the two flip-flops in `reset_sync`; the reset behaviour of the integrated top is
+not simulated (D-013).
+
 ---
 
 ## 6. Top-Level Ports (`mlc_cache_top`, D-034)
 
 | Group | Signals | Notes |
 |---|---|---|
-| Clock, reset | `clk`, `rst_n` | `rst_n` is asynchronous and active low; the top synchronises it with `reset_sync` for every unit (CR-02) |
+| Clock, reset | `clk`, `rst_n` | `rst_n` is asynchronous and active low; the top synchronises it with `reset_sync` for every unit (CR-02), so the units leave reset on the second clock edge after it deasserts (section 5) |
 | Instruction fetch port | `i_req_valid`, `i_req_ready`, `i_req_addr`, `i_resp_valid`, `i_resp_ready`, `i_resp_rdata` | The §1 interface of L1-I. Read-only: there are no write signals (FR-10) |
 | Data load/store port | `d_req_valid`, `d_req_ready`, `d_req_addr`, `d_req_we`, `d_req_wdata`, `d_req_wstrb`, `d_resp_valid`, `d_resp_ready`, `d_resp_rdata` | The §1 interface of L1-D |
 | AXI4 master | `m_axi_aw*`, `m_axi_w*`, `m_axi_b*`, `m_axi_ar*`, `m_axi_r*` | The §3 interface with `m_axi_` prepended. Adds `awlock`, `awcache`, `awprot`, `awqos`, `awregion` and the same five on the read address channel, driven by constants (top parameters `AXI_PROT`, `AXI_CACHE`, `AXI_QOS`, `AXI_REGION`). No IDs |

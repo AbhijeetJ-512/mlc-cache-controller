@@ -1459,8 +1459,8 @@ response line is not routed: the top fans it out to both L1 controllers and only
 module, and leaves the Phase 2 and 3 controllers untouched. Round-robin costs one flip-flop and removes a starvation
 case that is real, not hypothetical.
 
-**Tradeoffs.** A fourth module between L1 and L2 (it adds no cycle: it is combinational on the request and response
-paths, and its three bits of state are bookkeeping). `02_architecture.md` section 3 and the Phase 4 file list in the
+**Tradeoffs.** A fourth module between L1 and L2 (it puts no register on the request or response paths, and its three bits of state are bookkeeping; what the extra
+mux costs in latency is not measured, PF-03). `02_architecture.md` section 3 and the Phase 4 file list in the
 project plan are amended. The arbiter relies on three properties of L1 and L2 (L2 holds `req_ready` low after a read
 miss until it answers; a hit is answered in its accept cycle; an L1 raises `resp_ready` only while it waits for its own
 fill), which `tb_arbiter` models and `tb_l1_pair_l2` checks against the real ones.
@@ -1510,19 +1510,24 @@ The script turns the inspection promise into a failing build: no `always`, `init
 ternary or `.*`; every assign is a wire or a constant; every instance port connected by name, none unknown; every
 signal driven exactly once and read at least once; and every signal joins exactly the units the architecture says it
 joins (a table in the script written from the module graph, so a signal wired to the wrong unit is caught even when
-its width fits).
+its width fits), and every port is wired to a signal named for it once the boundary prefixes are stripped
+(`.dn_resp_line(l2_resp_line)`, `.req_valid(l2_req_valid)`), with the clock and reset ports pinned to `clk` and
+`rst_n_sync`. The name rule is what catches two same-width signals swapped between the same pair of units, or the
+clock and reset crossed on one unit; it makes the wire names part of the interface.
 
 **Tradeoffs.** The defaults are a judgment, not a measurement: `AxPROT = 0` claims unprivileged, secure data access
 for lines that mix instruction and data traffic, and `AxCACHE = 0011` suits a simple memory but not necessarily a
 coherent interconnect. They are parameters for that reason, and are labelled as defaults in `04_interfaces.md`. The
-module-graph table is a second statement of the topology and has to be updated with the architecture. A swap of two
-same-width signals between the same pair of units (for example two one-bit controls) is invisible to every static
-check here; only the Phase 5 UVM environment sees it. This is why Phase 4 makes no functional claim.
+module-graph table is a second statement of the topology and has to be updated with the architecture. The checks
+cannot see a swap that keeps both the names and the topology consistent (a signal wrongly named *and* wrongly wired the
+same way at both ends), a correct-looking top whose units are wrong, or anything about behaviour; only the Phase 5 UVM
+environment sees those. This is why Phase 4 makes no functional claim.
 
-**Result.** Twelve faults injected into the top file (a dropped connection, an implicit `.*`, an `always` block, an
+**Result.** Sixteen faults injected into the top file (a dropped connection, an implicit `.*`, an `always` block, an
 operator in an assign, a signal driven by two units, an output left open, a port that does not exist, an unused wire, an
-expression in a connection, a ternary, a signal wired to the wrong unit) are each caught by the script, and a
-narrowed bus is caught by Icarus (`-Wall` warns on the port width; Yosys only prints a resizing warning, which is why both
+expression in a connection, a ternary, a signal wired to the wrong unit, the clock and reset crossed on one unit, two
+control signals swapped on L2, two handshake signals swapped on the engine, an instance of an unknown module) are each
+caught by the script, and a narrowed bus is caught by Icarus (`-Wall` warns on the port width; Yosys only prints a resizing warning, which is why both
 run). Yosys's `check -assert` independently catches an undriven or doubly driven signal. Flattened, it also finds a
 combinational loop that runs through the arbiter and L2: a copy of the arbiter whose request to L2 waits for L2's
 `req_ready` is reported as a logic loop. `make top` takes under a second (0.5 s measured). Adding the arbiter and the

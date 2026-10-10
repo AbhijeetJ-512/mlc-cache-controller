@@ -21,6 +21,7 @@
 IVERILOG ?= iverilog
 VVP      ?= vvp
 YOSYS    ?= yosys
+PYTHON   ?= python3
 V        ?= 0
 
 SIM_DIR := sim
@@ -164,7 +165,7 @@ lint:
 
 .PHONY: top
 top:
-	@python3 scripts/check_top.py
+	@$(PYTHON) scripts/check_top.py
 	@out=$$($(IVERILOG) -g2012 -Wall -s mlc_cache_top -o /dev/null $(TOP_SRC) 2>&1); \
 	if [ -n "$$out" ]; then echo "$$out"; echo "top: Icarus (-Wall) reports problems elaborating mlc_cache_top"; exit 1; fi; \
 	echo "top: mlc_cache_top elaborates under Icarus -Wall with no warnings (widths and ports checked, nothing simulated)"

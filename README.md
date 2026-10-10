@@ -148,6 +148,7 @@ See D-013 in `docs/engineering_log.md` for the full reasoning, including the dir
 | Yosys 0.33 | installed | Synthesis, target Sky130HD |
 | OpenSTA 2.7.0 | installed | Static timing analysis |
 | OpenROAD v2.0-25346 | **installed, verified runnable** | Place and route, target Sky130HD |
+| Python 3.13 | installed | `make top` (`scripts/check_top.py`), the PLRU table generator |
 | Sky130HD liberty/LEF | present on disk | Copied into `sky130hd/` |
 | Class-capable SV simulator (VCS/Questa/Xcelium) + UVM library | **not installed** | Required only for `tb_uvm/`, supplied externally by the user |
 
