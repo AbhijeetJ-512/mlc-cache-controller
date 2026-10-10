@@ -18,3 +18,7 @@ a.out
 .claude/worktrees/
 .claude/settings.local.json
 .superpowers/
+
+# Synthesis scratch (Phase 7): Yosys logs and package copies. build/reports/ is tracked evidence.
+build/work/
+build/netlists/

@@ -9,13 +9,20 @@
 #   make elab          bad parameter sets must be rejected at elaboration, good ones accepted
 #   make lint          Yosys elaboration check: hierarchy, zero latches and tristates, no synthesis
 #   make top           the integrated top elaborates under Icarus with no warnings and is structural only
-#   make clean         remove build products (the tracked logs in sim/logs/ are kept)
+#   make synth-selftest  the synthesis flow's checks reject a latch, a tri-state, a multiply-driven net, a loop, a new warning
+#   make synth         synthesise every unit at its default configuration (Yosys, Sky130HD); minutes to an hour
+#   make synth-gatesim the Tier-1 testbenches that only use ports, run unchanged on the synthesised netlists (after make synth)
+#   make synth-sweep   the capacity / associativity sweep; about an hour
+#   make synth-l3-default   attempt the default 256 KiB L3; expected to run out of memory on a 15 GiB machine
+#   make synth-abc-compare  L1-D through ABC's full script, to compare with the default fast script
+#   make synth-summary rebuild build/reports/summary.md from the reports
+#   make clean         remove build products (the tracked logs in sim/logs/ and build/reports/ are kept)
 #
 # Adding a testbench: add one `$(call register,<name>,<sources>)` line to the registry below,
 # package first. Every file uses fully-qualified mlc_pkg:: names, which both Icarus 12 and
 # Yosys 0.33 resolve only if the package has already been read (D-016).
 #
-# Later phases add: make synth, sta, pnr, uvm, all, summary, view - each once its own scripts
+# Later phases add: make sta, pnr, uvm, all, summary, view - each once its own scripts
 # exist (docs/00_project_plan.md).
 
 IVERILOG ?= iverilog
@@ -23,6 +30,7 @@ VVP      ?= vvp
 YOSYS    ?= yosys
 PYTHON   ?= python3
 V        ?= 0
+SYNTH    := $(PYTHON) scripts/synth_run.py
 
 SIM_DIR := sim
 LOG_DIR := sim/logs
@@ -95,6 +103,8 @@ help:
 	@echo "make elab         bad parameter sets are rejected at elaboration, good ones accepted"
 	@echo "make lint         Yosys elaboration check: hierarchy, zero latches/tristates (no synthesis)"
 	@echo "make top          the integrated top elaborates cleanly and is structural only (no simulation)"
+	@echo "make synth        Yosys + Sky130HD, every unit at its default configuration (reports in build/reports/)"
+	@echo "make synth-sweep  the capacity / associativity sweep;  make synth-selftest  the flow's own checks can fail"
 	@echo "make clean        remove build products (keeps the tracked logs in sim/logs/)"
 
 .PHONY: list
@@ -170,6 +180,35 @@ top:
 	if [ -n "$$out" ]; then echo "$$out"; echo "top: Icarus (-Wall) reports problems elaborating mlc_cache_top"; exit 1; fi; \
 	echo "top: mlc_cache_top elaborates under Icarus -Wall with no warnings (widths and ports checked, nothing simulated)"
 
+# ---- Phase 7: synthesis to Sky130HD (D-037). Not part of `check` except the self-test: the runs take minutes each. ----
+.PHONY: synth synth-sweep synth-l3-default synth-abc-compare synth-selftest synth-summary synth-gatesim
+synth:
+	@rc=0; for p in $$($(SYNTH) --group default); do $(SYNTH) $$p || rc=1; done; \
+	$(MAKE) --no-print-directory synth-gatesim || rc=1; \
+	$(MAKE) --no-print-directory synth-summary >/dev/null; \
+	if [ $$rc -eq 0 ]; then echo "synth: every default-configuration unit passed; see build/reports/summary.md"; else echo "synth: FAILED"; fi; exit $$rc
+
+synth-sweep:
+	@rc=0; for p in $$($(SYNTH) --group sweep); do $(SYNTH) $$p || rc=1; done; \
+	$(MAKE) --no-print-directory synth-summary >/dev/null; \
+	if [ $$rc -eq 0 ]; then echo "synth-sweep: every sweep point passed; see build/reports/summary.md"; else echo "synth-sweep: FAILED"; fi; exit $$rc
+
+synth-l3-default:
+	@$(SYNTH) l3_default; rc=$$?; $(MAKE) --no-print-directory synth-summary >/dev/null; exit $$rc
+
+synth-abc-compare:
+	@rc=0; for p in l1_dcache l1_dcache_abcdefault; do $(SYNTH) $$p || rc=1; done; \
+	$(MAKE) --no-print-directory synth-summary >/dev/null; exit $$rc
+
+synth-gatesim:
+	@rc=0; for p in $$($(SYNTH) --gatesim-points); do $(SYNTH) --gatesim $$p || rc=1; done; exit $$rc
+
+synth-selftest:
+	@$(SYNTH) --selftest && echo "synth-selftest: the flow rejects a latch, a tri-state, a multiply-driven net, a loop and an unlisted warning, and accepts a clean module"
+
+synth-summary:
+	@$(PYTHON) scripts/synth_summary.py
+
 .PHONY: check
 check:
 	@rc=0; \
@@ -177,10 +216,12 @@ check:
 	echo "== top ==";   $(MAKE) --no-print-directory top  || rc=1; \
 	echo "== sim ==";   $(MAKE) --no-print-directory sim  || rc=1; \
 	echo "== lint ==";  $(MAKE) --no-print-directory lint || rc=1; \
+	echo "== synth-selftest =="; $(MAKE) --no-print-directory synth-selftest || rc=1; \
 	if [ $$rc -eq 0 ]; then echo "check: PASSED"; else echo "check: FAILED"; fi; exit $$rc
 
-# sim/logs/*.log are git-tracked test evidence, overwritten by every run - `clean` must not delete
-# them, or the working tree is left dirty after a clean.
+# sim/logs/*.log and build/reports/ are git-tracked evidence, overwritten by every run - `clean` must not delete
+# them, or the working tree is left dirty after a clean. build/work/ (logs, scratch package copies) is not tracked.
 .PHONY: clean
 clean:
 	@rm -f $(SIM_BINS) $(SIM_DIR)/elab_* $(SIM_DIR)/*.vcd
+	@rm -rf build/work
