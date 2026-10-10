@@ -87,3 +87,15 @@ tribuf
 select -assert-none t:$tribuf
 select -assert-count 3 m:*
 select -assert-count 1 m:data_array
+
+# The arbiter, on its own.
+design -reset
+read_verilog -sv rtl/common/mlc_pkg.sv
+read_verilog -sv rtl/arbiter/l1_l2_arbiter.sv
+hierarchy -top l1_l2_arbiter
+proc
+opt_clean
+check -assert
+select -assert-none t:$dlatch t:$adlatch t:$dlatchsr
+tribuf
+select -assert-none t:$tribuf
