@@ -1,0 +1,59 @@
+
+17. Printing statistics.
+
+=== l2_cache_ctrl ===
+
+   Number of wires:             496877
+   Number of wire bits:         568616
+   Number of public wires:        1117
+   Number of public wire bits:   72856
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:             568274
+     sky130_fd_sc_hd__a2111oi_0      6
+     sky130_fd_sc_hd__a211o_2        1
+     sky130_fd_sc_hd__a211oi_1   13475
+     sky130_fd_sc_hd__a21boi_0      16
+     sky130_fd_sc_hd__a21o_2        21
+     sky130_fd_sc_hd__a21oi_1    66718
+     sky130_fd_sc_hd__a22o_2         9
+     sky130_fd_sc_hd__a22oi_1      184
+     sky130_fd_sc_hd__a2bb2oi_1    160
+     sky130_fd_sc_hd__a311oi_1       1
+     sky130_fd_sc_hd__a31oi_1        1
+     sky130_fd_sc_hd__a41oi_1        3
+     sky130_fd_sc_hd__and2_2         1
+     sky130_fd_sc_hd__and3_2         2
+     sky130_fd_sc_hd__clkinv_1   67574
+     sky130_fd_sc_hd__conb_1         5
+     sky130_fd_sc_hd__dfrtp_1      451
+     sky130_fd_sc_hd__dfxtp_1    71514
+     sky130_fd_sc_hd__mux2_2       744
+     sky130_fd_sc_hd__mux2i_1     4547
+     sky130_fd_sc_hd__nand2_1    86028
+     sky130_fd_sc_hd__nand3_1      585
+     sky130_fd_sc_hd__nand3b_1      27
+     sky130_fd_sc_hd__nand4_1      520
+     sky130_fd_sc_hd__nor2_1    110276
+     sky130_fd_sc_hd__nor3_1       362
+     sky130_fd_sc_hd__nor4_1        91
+     sky130_fd_sc_hd__o211ai_1      18
+     sky130_fd_sc_hd__o21a_1       124
+     sky130_fd_sc_hd__o21ai_0    76210
+     sky130_fd_sc_hd__o21bai_1   65575
+     sky130_fd_sc_hd__o221ai_1     141
+     sky130_fd_sc_hd__o22ai_1     2056
+     sky130_fd_sc_hd__o2bb2ai_1    512
+     sky130_fd_sc_hd__o31ai_1       21
+     sky130_fd_sc_hd__o32ai_1      192
+     sky130_fd_sc_hd__o41ai_1        1
+     sky130_fd_sc_hd__or2_2         68
+     sky130_fd_sc_hd__or2b_2         3
+     sky130_fd_sc_hd__or3_2          1
+     sky130_fd_sc_hd__or4_2          3
+     sky130_fd_sc_hd__xnor2_1        1
+     sky130_fd_sc_hd__xor2_1        26
+
+   Chip area for module '\l2_cache_ctrl': 3830397.404799
+

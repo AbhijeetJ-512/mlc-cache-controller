@@ -1,0 +1,57 @@
+
+18. Printing statistics.
+
+=== l3_cache_ctrl ===
+
+   Number of wires:             485344
+   Number of wire bits:         556270
+   Number of public wires:         556
+   Number of public wire bits:   71482
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:             555425
+     sky130_fd_sc_hd__a2111oi_0      8
+     sky130_fd_sc_hd__a211o_2        5
+     sky130_fd_sc_hd__a211oi_1   25089
+     sky130_fd_sc_hd__a21boi_0      25
+     sky130_fd_sc_hd__a21oi_1    50226
+     sky130_fd_sc_hd__a221oi_1      58
+     sky130_fd_sc_hd__a22oi_1       36
+     sky130_fd_sc_hd__a2bb2oi_1    770
+     sky130_fd_sc_hd__a31o_2        45
+     sky130_fd_sc_hd__a31oi_1        6
+     sky130_fd_sc_hd__a41oi_1        2
+     sky130_fd_sc_hd__and2_2         2
+     sky130_fd_sc_hd__and3_2         2
+     sky130_fd_sc_hd__clkinv_1   70080
+     sky130_fd_sc_hd__conb_1         6
+     sky130_fd_sc_hd__dfrtp_1      243
+     sky130_fd_sc_hd__dfxtp_1    69333
+     sky130_fd_sc_hd__mux2_2        99
+     sky130_fd_sc_hd__mux2i_1     4864
+     sky130_fd_sc_hd__nand2_1    16490
+     sky130_fd_sc_hd__nand3_1      397
+     sky130_fd_sc_hd__nand3b_1      30
+     sky130_fd_sc_hd__nand4_1      127
+     sky130_fd_sc_hd__nor2_1    157438
+     sky130_fd_sc_hd__nor3_1        77
+     sky130_fd_sc_hd__nor3b_1        1
+     sky130_fd_sc_hd__nor4_1        31
+     sky130_fd_sc_hd__o211ai_1      13
+     sky130_fd_sc_hd__o21a_1        18
+     sky130_fd_sc_hd__o21ai_0    90508
+     sky130_fd_sc_hd__o21bai_1   66051
+     sky130_fd_sc_hd__o221ai_1      15
+     sky130_fd_sc_hd__o22ai_1     2669
+     sky130_fd_sc_hd__o2bb2ai_1    512
+     sky130_fd_sc_hd__o311ai_0       1
+     sky130_fd_sc_hd__o31ai_1       34
+     sky130_fd_sc_hd__o41ai_1       10
+     sky130_fd_sc_hd__or2_2          5
+     sky130_fd_sc_hd__or2b_2         3
+     sky130_fd_sc_hd__or4_2          2
+     sky130_fd_sc_hd__xor2_1        94
+
+   Chip area for module '\l3_cache_ctrl': 3783054.499199
+

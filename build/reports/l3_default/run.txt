@@ -1,0 +1,12 @@
+point: l3_default
+top: l3_cache_ctrl
+params: (defaults)
+package_overrides: (none)
+abc: fast
+status: out-of-memory
+reason: address-space cap 12000000 KiB reached
+wall_seconds: 223
+peak_rss_kib: 11971752
+mem_cap_kib: 12000000
+yosys: Yosys 0.33 (git sha1 2584903a060)
+liberty_sha256: 92eb4e93a3d4c2563018ac81cdec2f02fdeaced9b39337ed5c141fa63e0ad8f8

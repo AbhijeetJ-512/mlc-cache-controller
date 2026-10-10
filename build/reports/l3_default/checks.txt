@@ -1,0 +1,1 @@
+no tri-state driver in the RTL (SR-02)
