@@ -1,5 +1,5 @@
 # Makefile - mlc_cache_controller build/verification entry points.
-# Phase 1 provides: make sim (Tier-1 module-level smoke tests, Icarus),
+# Phases 1-2 provide: make sim (Tier-1 module-level smoke tests, Icarus),
 # make lint (Yosys elaboration check: hierarchy + zero-latch/tristate).
 # Later phases add: make synth, make sta, make pnr, make uvm,
 # make all, make summary, make view - each only once its own scripts exist,
