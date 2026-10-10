@@ -59,3 +59,14 @@ check -assert
 select -assert-none t:$dlatch t:$adlatch t:$dlatchsr
 tribuf
 select -assert-none t:$tribuf
+
+design -reset
+read_verilog -sv rtl/common/mlc_pkg.sv
+read_verilog -sv rtl/adapter/l2_l3_width_adapter.sv
+hierarchy -top l2_l3_width_adapter
+proc
+opt_clean
+check -assert
+select -assert-none t:$dlatch t:$adlatch t:$dlatchsr
+tribuf
+select -assert-none t:$tribuf

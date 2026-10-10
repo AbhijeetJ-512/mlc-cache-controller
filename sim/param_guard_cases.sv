@@ -18,6 +18,7 @@ module good_l2;        l2_cache_ctrl dut ();                                    
 module good_l2_2way;   l2_cache_ctrl #(.WAYS(2), .CAPACITY_B(16384)) dut ();                    endmodule
 module good_engine;    axi4_fill_engine dut ();                                                 endmodule
 module good_engine64;  axi4_fill_engine #(.AXI_DATA_W(64)) dut ();                              endmodule
+module good_adapter;   l2_l3_width_adapter dut ();                                              endmodule
 
 // ---- rejected ----
 // Each bad case is chosen so that exactly ONE guard can reject it (every other relationship between
@@ -33,3 +34,4 @@ module bad_l2_wr_not_pow2;    l2_cache_ctrl #(.WR_BYTES(6)) dut ();             
 module bad_engine_width;      axi4_fill_engine #(.AXI_DATA_W(48)) dut ();                       endmodule // 512 bits do not divide into 48-bit beats
 module bad_engine_beats;      axi4_fill_engine #(.AXI_DATA_W(1)) dut ();                        endmodule // 512 beats, AXI4 INCR allows 256
 module bad_engine_line_4k;    axi4_fill_engine #(.LINE_B(8192), .AXI_DATA_W(256)) dut ();       endmodule // 256 beats, but the line crosses a 4 KiB window
+module bad_adapter_ratio;    l2_l3_width_adapter #(.L3_LINE_B(128)) dut ();                    endmodule // 4:1 instead of 2:1 (NR-06)

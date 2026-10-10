@@ -1152,6 +1152,45 @@ AWREADY not awaited) were each caught, and deleting each of the three guards fli
 
 ---
 
+## D-028 — The adapter holds no state and has no clock
+
+**2026-10-10 · Phase 3**
+
+**Problem.** D-009 made the L2/L3 line-size adapter a standalone module (`FR-21`) and described it as a
+"sequencer/router" with no tag, valid or dirty state. A request to L3 can take many cycles when L3 misses, so
+the open question was whether the adapter must remember which 32 B half L2 asked for until the 64 B response
+comes back.
+
+**Options considered.**
+
+1. *A small FSM with a latched half bit*, set when the request is accepted and used when the response arrives.
+2. *Pure wiring*: read the half select from L2's live request address, `l2_req_addr[$clog2(L2_LINE_B)]`
+   (address bit 5), and mux the response with it.
+
+**Decision.** Option 2. Requests pass straight through (`l3_req_wdata` is L2's evicted line, `l3_req_wstrb` is
+all ones, which at L3 selects the half by the same address bit, D-024), handshakes pass through unchanged, and
+the response is the addressed half of L3's line.
+
+**Reason.** `04_interfaces.md` §2 makes it a binding contract that a level holds its fill request, address
+included, until the fill response has arrived; L1 does it and L2 does it. So the live address is stable for
+exactly the lifetime of the request and a latch would only copy a value that cannot change. Write-backs are
+posted and have no response. No clock, no reset and no state also leaves almost nothing to get wrong, and
+`make lint` has no latch to find.
+
+**Tradeoffs.** The adapter is only correct because the level above honours the hold contract. A future L2 that
+dropped its request address early would flip the half mid-fill. The module header says so. The combinational
+path is safe because every output of L2's downstream port is a function of its registered state, so the chain
+has no loop through the adapter.
+
+**Result.** `sim/tb_adapter.sv` (35 checks): both halves at eight addresses (including junk offset bits and the
+top of the address space), all sixteen handshake combinations, the write-back data, address, write enable and
+strobes, and a read staying a read. On a throwaway copy nine mutants (wrong half bit, halves swapped, strobes
+zero, write enable low, address bit 5 dropped, L2 ready forced high, L3 response ready forced high, L2 response
+valid forced low, write data from the wrong source) were each caught, and deleting the 2:1 ratio guard
+(`NR-06`) flipped `bad_adapter_ratio`. The adapter lints clean.
+
+---
+
 *Phase 1 (L1 controllers) is complete; D-015 through D-017 were recorded during it. Phase 2 (L2
 controller, standalone) begins with D-018/D-019 above, applying every Yosys-compatibility lesson
 from Phase 1 (D-016, D-017) plus the two found here from the start, rather than rediscovering
