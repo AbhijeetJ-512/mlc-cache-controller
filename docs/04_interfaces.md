@@ -1,11 +1,11 @@
 # 04 — Interfaces
 
 **IP:** `mlc_cache_controller`
-**Document status:** Phase 3 complete — Phase 0 baseline, revised with the binding contracts
-found while building and verifying the controllers: §1 `resp_ready` independence, §2 fill request
-held through `ALLOC_FILL`, §2 posted writes (D-021), §2 the write payload (D-024) and line-aligned
-downstream addresses (D-025).
-**Revision:** 0.3 · 2026-10-10
+**Document status:** Phase 4 — Phase 0 baseline, revised with the binding contracts found while
+building and verifying the controllers: §1 `resp_ready` independence, §2 fill request held through
+`ALLOC_FILL`, §2 posted writes (D-021), §2 the write payload (D-024), line-aligned downstream
+addresses (D-025), §2 the L1 arbiter (D-033), §6 the top-level ports (D-034).
+**Revision:** 0.4 · 2026-10-10
 
 ---
 
@@ -111,6 +111,15 @@ write-back's is `{tag, index, 0}`). The AXI4 fill engine relies on this and has 
 property of what a level *sends*; requests *into* a level still carry full addresses, from which that level derives
 its own index and tag. The L2 to L3 adapter's half select, address bit 5, lies above L2's offset and survives.
 
+**Contract: two L1 controllers share L2 through `l1_l2_arbiter` (D-033).** L2 has one upstream port and the arbiter
+is the only place that knows there are two requesters. It shows L2 one request at a time (the only one asking; on a tie
+the one that was not accepted last, and after reset the instruction side), shows L2 nothing while a read is
+outstanding, and routes the response of a read to the requester that asked, with that requester's `resp_ready`.
+A read that hits is answered in its accept cycle and belongs to the requester being accepted; a read that missed is
+remembered until its response is taken. Writes are posted and are never remembered. A requester that is not shown to L2
+sees `req_ready` low. The response line is not routed: it fans out to both L1 controllers, and only the one given
+`resp_valid` uses it. The arbiter adds no cycle.
+
 At the L2<->L3 boundary specifically, `req_addr`/`resp_line` pass through `l2_l3_width_adapter`,
 which changes the effective payload width (L2 line = 32 B in, L3 line = 64 B on the far side)
 per `03_microarchitecture.md` §3 — the adapter is the only place this interface's width actually
@@ -148,9 +157,9 @@ One AXI4 master port, driven by `axi4_fill_engine`, exposed at `mlc_cache_top`.
 | | `rlast` | 1 | Asserted on the final beat |
 | | `rvalid`/`rready` | 1 | Standard handshake |
 
-The engine drives only the signals in the table. The ones AXI4 also defines (`AxCACHE`, `AxLOCK`, `AxPROT`,
-`AxQOS`, `AxREGION`, and constant IDs) are **NOT YET DECIDED**: `mlc_cache_top` has to tie them off in Phase 4, and `AxPROT`
-in particular must be driven (to be checked against the AXI4 specification then).
+The engine drives only the signals in the table. The ones AXI4 also defines are constants driven by `mlc_cache_top`
+(D-034): `AxLOCK` = 0 and `AxCACHE`, `AxPROT`, `AxQOS`, `AxREGION` from top parameters (defaults `4'b0011`, `3'b000`, 0, 0).
+Those defaults are a judgment, not a requirement of the cache, and are parameters so the integrator can change them.
 
 No `AWID`/`ARID`/`WID`/etc. — a single-outstanding-transaction master (consistent with the
 blocking-miss decision, D-004) does not need transaction tagging; every burst completes before
@@ -174,6 +183,21 @@ every FSM to `IDLE`. `req_ready` is driven low throughout reset (a level cannot 
 into an array it hasn't finished invalidating) and high the cycle after `rst_n` deasserts,
 matching CR-04. In-flight AXI4 transactions are not gracefully drained on reset — this is a
 documented scope boundary (CR-04), not an oversight.
+
+---
+
+## 6. Top-Level Ports (`mlc_cache_top`, D-034)
+
+| Group | Signals | Notes |
+|---|---|---|
+| Clock, reset | `clk`, `rst_n` | `rst_n` is asynchronous and active low; the top synchronises it with `reset_sync` for every unit (CR-02) |
+| Instruction fetch port | `i_req_valid`, `i_req_ready`, `i_req_addr`, `i_resp_valid`, `i_resp_ready`, `i_resp_rdata` | The §1 interface of L1-I. Read-only: there are no write signals (FR-10) |
+| Data load/store port | `d_req_valid`, `d_req_ready`, `d_req_addr`, `d_req_we`, `d_req_wdata`, `d_req_wstrb`, `d_resp_valid`, `d_resp_ready`, `d_resp_rdata` | The §1 interface of L1-D |
+| AXI4 master | `m_axi_aw*`, `m_axi_w*`, `m_axi_b*`, `m_axi_ar*`, `m_axi_r*` | The §3 interface with `m_axi_` prepended. Adds `awlock`, `awcache`, `awprot`, `awqos`, `awregion` and the same five on the read address channel, driven by constants (top parameters `AXI_PROT`, `AXI_CACHE`, `AXI_QOS`, `AXI_REGION`). No IDs |
+| Status | `mem_err` | Sticky: any SLVERR/DECERR or RLAST mismatch since reset |
+
+Everything between the L1 controllers and the AXI4 engine (§2) is internal and not exposed. The CPU-side rule of §1
+(decide `resp_ready` without waiting for `resp_valid`) applies to both ports.
 
 ---
 

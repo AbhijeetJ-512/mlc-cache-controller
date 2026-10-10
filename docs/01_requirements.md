@@ -139,7 +139,7 @@ Full derivation and the address-field diagrams are in `02_architecture.md` §2. 
 |---|---|---|
 | PF-01 | M | A hit at any level shall complete in the same cycle the request is accepted (combinational tag-compare, registered data mux) — no bubble on the common case, at any level, independent of associativity. |
 | PF-02 | M | Miss penalty at a level shall be deterministic given which further levels also miss, and shall be documented exactly (in cycles, as a function of parameters) in `03_microarchitecture.md`. |
-| PF-03 | S | Miss penalty shall be verified by simulation, not only predicted. **Actual measured miss-penalty cycle counts: NOT YET MEASURED** — to be filled from simulation in Phase 4. |
+| PF-03 | S | Miss penalty shall be verified by simulation, not only predicted. **Actual measured miss-penalty cycle counts: NOT YET MEASURED.** This was meant to be filled in Phase 4, but D-013 allows no Tier-1 simulation of the integrated hierarchy, so a full-path figure has to wait for Phase 5; figures at a single boundary (L1 to L2, L2 to L3 through the adapter) could be measured earlier and are not yet. |
 
 ### 5.2 Throughput
 

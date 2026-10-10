@@ -202,6 +202,36 @@ sets `mem_err` but leaves the engine waiting in R for beats that never come, unt
 
 ---
 
+## 4A. L1 to L2 Arbiter (`l1_l2_arbiter`, D-033)
+
+Section number 4A rather than a renumbering, so that the references to sections 3 and 4 elsewhere stay valid.
+
+L2 has one upstream port; L1-I and L1-D both feed it. The arbiter is combinational on every request and response path and
+has three bits of state, none of them cache state:
+
+| State | Meaning |
+|---|---|
+| `busy` | A read that missed has been accepted and its response has not been taken yet |
+| `owner` | Which requester (0 = L1-I, 1 = L1-D) that read came from |
+| `last` | Which requester was accepted most recently; reset to 1, so a tie after reset goes to requester 0 |
+
+**Request path.** `sel` is the only requester asking, or on a tie `~last`. L2 sees `sel`'s request unless `busy`, in which
+case it sees none (an L1 keeps its fill request raised for the whole fill, and L2 must not take it for a second request).
+A requester that is not `sel` sees `req_ready` low. On an accepted request `last` becomes `sel`.
+
+**Response path.** `resp_to` is `owner` while `busy`, otherwise `sel`: a read that hits is answered in its own accept cycle,
+so it belongs to the requester being accepted. `resp_valid` goes to `resp_to` only, and L2's `resp_ready` is that
+requester's. A read accepted without an answer in the same cycle sets `busy` and records `owner`; the response being taken
+clears `busy`. A write never sets `busy` (posted, D-021). Because a requester is accepted only when L2 is idle and
+every response is taken before the next request is shown, no more than one read is ever outstanding.
+
+**What it relies on.** L2 holds `req_ready` low after a read miss until it has answered (the L1 to L2 contract in
+`04_interfaces.md` section 2), answers a hit in its accept cycle only if `resp_ready` is high, and never answers a write;
+an L1 raises `resp_ready` only while it waits for its own fill. These are asserted by `tb_arbiter` against a model of L2's
+port and checked against the real L1 and L2 by `tb_l1_pair_l2`.
+
+---
+
 ## 5. Expected Critical Path (prediction, to be confirmed — TR-03)
 
 The widest combinational hit path is expected at **L3**: an 8-way parallel tag compare, an

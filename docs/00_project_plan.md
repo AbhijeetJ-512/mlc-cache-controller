@@ -18,6 +18,7 @@ mlc_cache_controller/
 ├── rtl/
 │   ├── top/            mlc_cache_top.sv          integration only, no logic
 │   ├── l1/              l1_icache_ctrl.sv, l1_dcache_ctrl.sv
+│   ├── arbiter/         l1_l2_arbiter.sv           lets the two L1s share L2's one port (D-033)
 │   ├── l2/              l2_cache_ctrl.sv
 │   ├── l3/              l3_cache_ctrl.sv
 │   ├── adapter/         l2_l3_width_adapter.sv    line-size adaptation (32B <-> 64B)
@@ -146,11 +147,11 @@ complete, and documented," never to a pass/fail this session cannot produce (D-0
 
 | | |
 |---|---|
-| **Objective** | L1-I, L1-D, L2, L3 and the AXI4 memory-side connected as one IP. This phase is wiring and elaboration only — per D-013 (pass 2), the integrated hierarchy has no standalone Icarus testbench of its own; its functional verification is entirely Phase 5's job. |
-| **Files** | `rtl/top/mlc_cache_top.sv` |
-| **Work** | Wire L1-I/L1-D each to L2; L2 to L3 through the adapter; L3 to the AXI4 fill engine |
-| **Tier-1 check (elaboration only, not functional)** | `mlc_cache_top.sv` elaborates cleanly (Icarus `-tnull`/syntax-and-port-check compile, and Yosys `read_verilog`/`hierarchy` elaboration) with zero inferred latches and no unconnected/mismatched ports. This confirms the wiring is structurally sound; it does not exercise any functional behavior. |
-| **Done when** | The integrated design elaborates cleanly by both tools above. Any functional claim about the integrated hierarchy's behavior is out of scope for this phase — see Phase 5. |
+| **Objective** | L1-I, L1-D, L2, L3 and the AXI4 memory-side connected as one IP. The top is wiring and elaboration only — per D-013 (pass 2), the integrated hierarchy has no standalone Icarus testbench of its own; its functional verification is entirely Phase 5's job. Two L1 controllers cannot share L2's single port by wiring alone, so this phase also adds a small arbiter module (D-033), which is a standalone unit with its own Tier-1 test. |
+| **Files** | `rtl/top/mlc_cache_top.sv`, `rtl/arbiter/l1_l2_arbiter.sv`, `sim/tb_arbiter.sv`, `sim/tb_l1_pair_l2.sv`, `scripts/check_top.py` |
+| **Work** | Arbiter between L1-I/L1-D and L2 (round-robin); wire L2 to L3 through the adapter and L3 to the AXI4 fill engine; synchronise the reset; tie off the AXI4 sideband signals with parameters (D-034); remove the unused L2/L3 write-data ports (D-035) |
+| **Tier-1 check (elaboration only for the top, not functional)** | `make top`: `scripts/check_top.py` (structural only: no logic, every port connected by name, one driver per signal, each signal joins the units the architecture says), Icarus `-Wall` elaboration with no warnings, and a Yosys `hierarchy -check`/`check -assert` block in `make lint` with zero inferred latches. This confirms the wiring is structurally sound; it does not exercise any functional behavior. The arbiter itself has `tb_arbiter` and, as a boundary-contract test in the D-030 sense, `tb_l1_pair_l2`. |
+| **Done when** | The integrated design elaborates cleanly by the tools above, `make check` passes, and the arbiter's tests pass and are mutation-checked. Any functional claim about the integrated hierarchy's behavior is out of scope for this phase — see Phase 5. |
 
 ---
 
