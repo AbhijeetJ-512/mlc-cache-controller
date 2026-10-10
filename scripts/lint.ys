@@ -99,3 +99,27 @@ check -assert
 select -assert-none t:$dlatch t:$adlatch t:$dlatchsr
 tribuf
 select -assert-none t:$tribuf
+
+# The integrated top (D-034): everything wired together elaborates cleanly. `hierarchy -check`
+# fails on a missing module or port; `check -assert` on an undriven or multiply driven signal. This
+# is an elaboration check only and says nothing about behaviour (that is Phase 5's UVM tier).
+design -reset
+read_verilog -sv rtl/common/mlc_pkg.sv
+read_verilog -sv rtl/common/reset_sync.sv
+read_verilog -sv rtl/l1/l1_cache_ctrl.sv
+read_verilog -sv rtl/l1/l1_icache_ctrl.sv
+read_verilog -sv rtl/l1/l1_dcache_ctrl.sv
+read_verilog -sv rtl/arbiter/l1_l2_arbiter.sv
+read_verilog -sv rtl/replace/plru_tree.sv
+read_verilog -sv rtl/l2/l2_cache_ctrl.sv
+read_verilog -sv rtl/adapter/l2_l3_width_adapter.sv
+read_verilog -sv rtl/l3/l3_cache_ctrl.sv
+read_verilog -sv rtl/mem_if/axi4_fill_engine.sv
+read_verilog -sv rtl/top/mlc_cache_top.sv
+hierarchy -check -top mlc_cache_top
+proc
+opt_clean
+check -assert
+select -assert-none t:$dlatch t:$adlatch t:$dlatchsr
+tribuf
+select -assert-none t:$tribuf

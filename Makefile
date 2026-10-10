@@ -1,13 +1,14 @@
 # Makefile - build, test and check entry points for mlc_cache_controller.
 #
 #   make               this help
-#   make check         everything: parameter guards, every Tier-1 test, Yosys lint.
+#   make check         everything: parameter guards, every Tier-1 test, the top check, Yosys lint.
 #                      Exits non-zero if anything fails.
 #   make sim           every Tier-1 testbench (Icarus), one summary line each
 #   make test-<name>   one testbench, e.g. `make test-tb_l3`   (V=1 prints its full output)
 #   make list          list the testbenches
 #   make elab          bad parameter sets must be rejected at elaboration, good ones accepted
 #   make lint          Yosys elaboration check: hierarchy, zero latches and tristates, no synthesis
+#   make top           the integrated top elaborates under Icarus with no warnings and is structural only
 #   make clean         remove build products (the tracked logs in sim/logs/ are kept)
 #
 # Adding a testbench: add one `$(call register,<name>,<sources>)` line to the registry below,
@@ -49,6 +50,11 @@ $(call register,tb_l1_l2,$(PKG) sim/tb_l1_l2.sv sim/l3_stub.sv rtl/l1/l1_cache_c
 $(call register,tb_l1_pair_l2,$(PKG) sim/tb_l1_pair_l2.sv sim/l3_stub.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_icache_ctrl.sv rtl/l1/l1_dcache_ctrl.sv rtl/arbiter/l1_l2_arbiter.sv rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv)
 $(call register,tb_l2_l3_chain,$(PKG) sim/tb_l2_l3_chain.sv sim/axi_mem_model.sv rtl/mem_if/axi4_fill_engine.sv rtl/adapter/l2_l3_width_adapter.sv rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv rtl/l3/l3_cache_ctrl.sv)
 
+# Everything mlc_cache_top instantiates, package first (D-016); used by `make top`.
+TOP_SRC := $(PKG) rtl/common/reset_sync.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_icache_ctrl.sv rtl/l1/l1_dcache_ctrl.sv \
+           rtl/arbiter/l1_l2_arbiter.sv rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv rtl/adapter/l2_l3_width_adapter.sv \
+           rtl/l3/l3_cache_ctrl.sv rtl/mem_if/axi4_fill_engine.sv rtl/top/mlc_cache_top.sv
+
 SIM_BINS     := $(addprefix $(SIM_DIR)/,$(TESTS))
 TEST_TARGETS := $(addprefix test-,$(TESTS))
 
@@ -87,6 +93,7 @@ help:
 	@echo "make list         list the testbenches"
 	@echo "make elab         bad parameter sets are rejected at elaboration, good ones accepted"
 	@echo "make lint         Yosys elaboration check: hierarchy, zero latches/tristates (no synthesis)"
+	@echo "make top          the integrated top elaborates cleanly and is structural only (no simulation)"
 	@echo "make clean        remove build products (keeps the tracked logs in sim/logs/)"
 
 .PHONY: list
@@ -155,10 +162,18 @@ elab:
 lint:
 	@$(YOSYS) -q scripts/lint.ys && echo "lint: clean (hierarchies elaborate, zero latches and tristates, L2 and L3 arrays inferred as memories)"
 
+.PHONY: top
+top:
+	@python3 scripts/check_top.py
+	@out=$$($(IVERILOG) -g2012 -Wall -s mlc_cache_top -o /dev/null $(TOP_SRC) 2>&1); \
+	if [ -n "$$out" ]; then echo "$$out"; echo "top: Icarus (-Wall) reports problems elaborating mlc_cache_top"; exit 1; fi; \
+	echo "top: mlc_cache_top elaborates under Icarus -Wall with no warnings (widths and ports checked, nothing simulated)"
+
 .PHONY: check
 check:
 	@rc=0; \
 	echo "== elab ==";  $(MAKE) --no-print-directory elab || rc=1; \
+	echo "== top ==";   $(MAKE) --no-print-directory top  || rc=1; \
 	echo "== sim ==";   $(MAKE) --no-print-directory sim  || rc=1; \
 	echo "== lint ==";  $(MAKE) --no-print-directory lint || rc=1; \
 	if [ $$rc -eq 0 ]; then echo "check: PASSED"; else echo "check: FAILED"; fi; exit $$rc
