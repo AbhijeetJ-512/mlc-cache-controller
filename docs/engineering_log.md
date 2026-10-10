@@ -1034,10 +1034,17 @@ write-back is one hit-or-miss decision at L3.
 A write exactly as wide as the line cannot be expressed, which nothing here needs. This supersedes the
 `req_line` row of `04_interfaces.md` §2 (updated in Task 9).
 
-**Result.** At this commit only the default width is exercised by checked-in tests: `tb_l2` still passes
-with its Phase 2 checks unchanged (108 with the alignment check of D-025). The 32-byte case, hit and
-write-allocate with byte strobes, is exercised by `tb_l3` in Task 6; until that lands it is **NOT YET
-RUN** in the repository.
+**Result.** The default width is unchanged: `tb_l2` still passes with its Phase 2 checks (108 with the
+alignment check of D-025). The 32-byte case is exercised by `tb_l3` (37 checks): half-line write hits on the
+upper and lower half, byte strobes at 32 B granularity, and write-allocate into the lower and the upper half,
+plus an L2-sized write-back reaching memory with the right contents. On a throwaway copy ten mutants of the
+shared controller were each caught by `tb_l3` (unaligned fill address, hit write ignoring the slot, dirty victim
+never written back, write-back to the wrong address, strobes ignored, write-allocate dropping the merge,
+write-allocate ignoring the slot, write-allocated line left clean, write-back without data, writes answered with
+a response). The upper-half write-allocate check was added after reasoning that every write-allocate in the first
+version of the test used the lower half; the "ignores the slot" mutant is caught only by it. `lint.ys` has an L3
+block asserting zero latches and, at L3's 2 Mbit data array, exactly 3 inferred memories with `data_array` one of
+them (about 35 s of the 72 s `make lint`).
 
 ---
 

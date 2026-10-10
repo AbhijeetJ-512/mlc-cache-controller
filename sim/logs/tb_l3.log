@@ -1,0 +1,39 @@
+PASS: req_ready is high after reset
+PASS: cold read returns the 64 B line from memory
+PASS: a cold read costs exactly one AR burst and no AW burst
+PASS: the fill burst is LEN 15, SIZE 2, INCR and 64 B aligned
+PASS: a repeated read is a hit: no new AR burst
+PASS: a read at an unaligned address returns its whole line
+PASS: the fill address sent to AXI is line-aligned
+PASS: write to 0x00010020 is a hit: accepted with no miss sequence
+PASS: an upper-half write hit replaces only the upper 32 B
+PASS: a half-line write hit causes no AXI traffic
+PASS: write to 0x00010000 is a hit: accepted with no miss sequence
+PASS: a lower-half write honours the byte strobes
+PASS: the lower-half write leaves the upper half alone
+PASS: a write miss fetches the line (one AR) and writes nothing back
+PASS: the write-allocate merged into the fetched line
+PASS: an upper-half write miss also fetches the line and writes nothing back
+PASS: the write-allocate merged into the upper half only
+PASS: the 9th tag installs and returns its line
+PASS: the dirty eviction is one AW burst of 16 W beats
+PASS: the eviction is followed by exactly one AR burst for the new line
+PASS: memory holds the evicted line: written half merged, other half original
+PASS: the write-back (AW) is to the evicted line's address
+PASS: the fill (AR) comes after the write-back, for the new line's address
+PASS: evicting a clean line produces no AW burst
+PASS: a fill is correct with ARREADY stalled and gaps between R beats
+PASS: an eviction is correct with AWREADY and WREADY stalled
+PASS: the write-back data is intact after the stalls
+PASS: no AXI protocol violation under backpressure
+PASS: mem_err is low before any error
+PASS: SLVERR on a fill sets mem_err
+PASS: the fill data is still returned after an AXI error
+PASS: reset clears mem_err
+PASS: reset mid-fill returns L3 and the engine to idle
+PASS: reset invalidated the cache: a previously resident line misses again
+PASS: and the refetched line is correct
+PASS: no write (hit or write-allocate) raised resp_valid anywhere in the run (D-021)
+PASS: no AXI protocol violation anywhere in the run
+** ALL TESTS PASSED **
+sim/tb_l3.sv:311: $finish called at 9415000 (1ps)

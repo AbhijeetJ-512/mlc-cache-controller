@@ -42,6 +42,7 @@ $(call register,tb_plru_ways,sim/tb_plru_ways.sv rtl/replace/plru_tree.sv)
 $(call register,tb_l2,$(PKG) sim/tb_l2.sv sim/l3_stub.sv rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv)
 $(call register,tb_adapter,$(PKG) sim/tb_adapter.sv rtl/adapter/l2_l3_width_adapter.sv)
 $(call register,tb_axi4_fill_engine,$(PKG) sim/tb_axi4_fill_engine.sv sim/axi_mem_model.sv rtl/mem_if/axi4_fill_engine.sv)
+$(call register,tb_l3,$(PKG) sim/tb_l3.sv sim/axi_mem_model.sv rtl/mem_if/axi4_fill_engine.sv rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv rtl/l3/l3_cache_ctrl.sv)
 
 SIM_BINS     := $(addprefix $(SIM_DIR)/,$(TESTS))
 TEST_TARGETS := $(addprefix test-,$(TESTS))
@@ -58,6 +59,9 @@ ELAB_BAD       += bad_engine_width bad_engine_beats bad_engine_line_4k
 ELAB_SRC       += rtl/adapter/l2_l3_width_adapter.sv
 ELAB_GOOD      += good_adapter
 ELAB_BAD       += bad_adapter_ratio
+ELAB_SRC       += rtl/l3/l3_cache_ctrl.sv
+ELAB_GOOD      += good_l3
+ELAB_BAD       += bad_l3_line_ratio
 # Degenerate sets whose width arithmetic collapses to zero-width vectors: Icarus refuses to compile
 # them before the guard's initial block can run, so for these an Icarus compile error also counts as
 # a rejection. Yosys must still hit the guard itself.

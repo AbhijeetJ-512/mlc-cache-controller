@@ -70,3 +70,20 @@ check -assert
 select -assert-none t:$dlatch t:$adlatch t:$dlatchsr
 tribuf
 select -assert-none t:$tribuf
+
+# L3 is the same controller at L3's parameters (FR-17). Re-checked at its size: 2 Mbit of data
+# array must still come out as a real memory, not as discrete registers.
+design -reset
+read_verilog -sv rtl/common/mlc_pkg.sv
+read_verilog -sv rtl/replace/plru_tree.sv
+read_verilog -sv rtl/l2/l2_cache_ctrl.sv
+read_verilog -sv rtl/l3/l3_cache_ctrl.sv
+hierarchy -top l3_cache_ctrl
+proc
+opt_clean
+check -assert
+select -assert-none t:$dlatch t:$adlatch t:$dlatchsr
+tribuf
+select -assert-none t:$tribuf
+select -assert-count 3 m:*
+select -assert-count 1 m:data_array
