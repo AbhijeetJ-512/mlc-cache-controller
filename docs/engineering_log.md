@@ -1399,7 +1399,7 @@ legal slave behaviours, the one the engine assumed.
 
 **Decision.** Option 2. `S_AW` and `S_W` become one state, `S_WR`, with `aw_done_q` and `w_done_q`. AWVALID is
 high until its handshake, WVALID until the last beat is accepted, the beat counter advances on WVALID and WREADY, and
-the state moves to B once both are done, counting a handshake in that same cycle. The engine now has six states.
+the state moves to B once both flags are set. The engine now has six states.
 
 **Reason.** It is the only form that is correct against every slave the spec allows, and a slave that does require
 the AW handshake before accepting W is still fine, because WVALID and the data are held stable until WREADY.
@@ -1408,12 +1408,14 @@ the AW handshake before accepting W is still fine, because WVALID and the data a
 posted writes, sticky `mem_err`, the guards) are unchanged.
 
 **Result.** `axi_mem_model` gained `aw_mode`: 0 the previous slave, 1 AWREADY only once WVALID is also high, 2 the
-whole W burst accepted and held before the AW is taken. `tb_axi4_fill_engine` 45 to 50 checks: a write against each
+whole W burst accepted and held before the AW is taken. Mode 1 takes AWREADY from a registered copy of WVALID, since
+AXI4 allows no combinational path from an input to an output (a re-review point). `tb_axi4_fill_engine` 45 to 50 checks: a write against each
 mode, with AW held off for 40 cycles in mode 2 (all 16 W beats are taken first and the engine keeps AWVALID up), and a
 mode-1 write with W stalled and a delayed response. Nine engine mutants were all caught: the old behaviour (WVALID after
 the AW handshake, caught as a hang against mode 1), leaving the write state on W alone or on AW alone, flags not
 cleared for the next write, a beat counter advancing without WREADY, W done after the first beat, AWVALID never
-dropped, WLAST never, and the earlier "new request accepted in the cycle the response is taken". Two smaller findings
+dropped, WLAST never, and the earlier "new request accepted in the cycle the response is taken" (caught by `tb_l3` and the chain test, not
+by the engine testbench). Two smaller findings
 from the same review were fixed alongside: the engine now requires `LINE_B` to be a power of two (otherwise an aligned
 burst could cross a 4 KiB window; new case `bad_engine_line_pow2`, and deleting the guard flips only that case), and
 the memory model flags a burst that runs past its memory instead of wrapping onto a valid line. 502 checks in 11

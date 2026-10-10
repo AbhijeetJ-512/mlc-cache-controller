@@ -14,8 +14,9 @@
 // rresp_err_beat, a beat number whose RRESP alone is SLVERR (-1 for none); and aw_mode, which
 // picks which legal write-channel ordering the slave shows (AXI4 A3.3.1 lets a slave wait for
 // AWVALID or WVALID or both, so a master may depend on none of them): 0 AWREADY at once and WREADY
-// after the AW handshake, 1 AWREADY only once WVALID is also high (WREADY still after AW), 2 the
-// whole W burst is accepted first, held, and only then is AW accepted.
+// after the AW handshake, 1 AWREADY only once WVALID has been seen high in an earlier cycle
+// (registered, since AXI4 allows no combinational path from an input to an output; WREADY still
+// after AW), 2 the whole W burst is accepted first, held, and only then is AW accepted.
 module axi_mem_model #(
   parameter int DATA_W      = 32,
   parameter int MEM_WORDS   = 131072,  // DATA_W-wide words (512 KiB at 32 bits); addresses wrap modulo this
@@ -140,7 +141,7 @@ module axi_mem_model #(
     if (arsize  !== EXP_SIZE[2:0]) proto_err($sformatf("ARSIZE %0d, expected %0d", arsize, EXP_SIZE));
     if (arburst !== 2'b01)         proto_err($sformatf("ARBURST %0d, expected INCR", arburst));
     if (araddr % EXP_ALIGN_B != 0) proto_err($sformatf("ARADDR 0x%08h not %0d-byte aligned", araddr, EXP_ALIGN_B));
-    if (araddr / BYTES + arlen >= MEM_WORDS) proto_err($sformatf("ARADDR 0x%08h burst runs past the model's memory", araddr));
+    if (araddr / BYTES + arlen >= MEM_WORDS) proto_err($sformatf("ARADDR 0x%08h burst runs past the model's memory (a test or address bug)", araddr));
   end
 
   // ---------------- write channel ----------------
@@ -154,10 +155,15 @@ module axi_mem_model #(
   logic [DATA_W-1:0] stage [0:255];
   logic [7:0]  st_beat;
   wire         w_staging = (wstate == W_IDLE) && (aw_mode == 2);
+  logic        wvalid_q;   // WVALID one cycle ago, for aw_mode 1
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) wvalid_q <= 1'b0;
+    else        wvalid_q <= wvalid;
+  end
   wire  [7:0]  w_cur_beat = w_staging ? st_beat : w_beat;
   wire  [7:0]  w_cur_len  = w_staging ? EXP_LEN[7:0] : w_len_q;
 
-  assign awready = ((wstate == W_IDLE && aw_mode != 2 && (aw_mode != 1 || wvalid)) || wstate == W_AWAIT) && !stall_aw;
+  assign awready = ((wstate == W_IDLE && aw_mode != 2 && (aw_mode != 1 || wvalid_q)) || wstate == W_AWAIT) && !stall_aw;
   assign wready  = (wstate == W_DATA || w_staging) && !stall_w;
   assign bvalid  = (wstate == W_RESP) && (b_cnt == 0);
   assign bresp   = force_bresp;
@@ -212,7 +218,7 @@ module axi_mem_model #(
     if (awsize  !== EXP_SIZE[2:0]) proto_err($sformatf("AWSIZE %0d, expected %0d", awsize, EXP_SIZE));
     if (awburst !== 2'b01)         proto_err($sformatf("AWBURST %0d, expected INCR", awburst));
     if (awaddr % EXP_ALIGN_B != 0) proto_err($sformatf("AWADDR 0x%08h not %0d-byte aligned", awaddr, EXP_ALIGN_B));
-    if (awaddr / BYTES + awlen >= MEM_WORDS) proto_err($sformatf("AWADDR 0x%08h burst runs past the model's memory", awaddr));
+    if (awaddr / BYTES + awlen >= MEM_WORDS) proto_err($sformatf("AWADDR 0x%08h burst runs past the model's memory (a test or address bug)", awaddr));
   end
 
   always @(posedge clk) if (rst_n && wvalid && wready) begin

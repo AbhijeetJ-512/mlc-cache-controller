@@ -148,6 +148,10 @@ One AXI4 master port, driven by `axi4_fill_engine`, exposed at `mlc_cache_top`.
 | | `rlast` | 1 | Asserted on the final beat |
 | | `rvalid`/`rready` | 1 | Standard handshake |
 
+The engine drives only the signals in the table. The ones AXI4 also defines (`AxCACHE`, `AxLOCK`, `AxPROT`,
+`AxQOS`, `AxREGION`, and constant IDs) are **NOT YET DECIDED**: `mlc_cache_top` has to tie them off in Phase 4, and `AxPROT`
+in particular must be driven (to be checked against the AXI4 specification then).
+
 No `AWID`/`ARID`/`WID`/etc. — a single-outstanding-transaction master (consistent with the
 blocking-miss decision, D-004) does not need transaction tagging; every burst completes before
 the next is issued (Open Question OQ-3 in `01_requirements.md` revisits whether this remains

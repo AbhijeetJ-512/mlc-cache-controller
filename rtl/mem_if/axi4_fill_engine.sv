@@ -157,9 +157,10 @@ module axi4_fill_engine #(
             if (last_beat) w_done_q <= 1'b1;
             else           beat_q   <= beat_q + 1'b1;
           end
-          // Both channels finished, counting a handshake in this very cycle. While a flag is clear
-          // the matching valid is high, so ready alone is the handshake.
-          if ((aw_done_q || awready) && (w_done_q || (wready && last_beat))) state <= S_B;
+          // Both channels finished. From the registered flags only: a handshake in this very cycle
+          // is seen one cycle later, which costs a cycle but keeps the exit condition free of the
+          // inputs (and of a case no slave model can produce).
+          if (aw_done_q && w_done_q) state <= S_B;
         end
         S_B: begin
           if (bvalid) begin

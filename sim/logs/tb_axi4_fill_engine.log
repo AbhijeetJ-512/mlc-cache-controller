@@ -49,4 +49,4 @@ PASS: reset mid-read returns the engine to idle
 PASS: the engine works normally after a reset mid-burst
 PASS: no protocol violation anywhere in the run
 ** ALL TESTS PASSED **
-sim/tb_axi4_fill_engine.sv:305: $finish called at 6185000 (1ps)
+sim/tb_axi4_fill_engine.sv:305: $finish called at 6265000 (1ps)
