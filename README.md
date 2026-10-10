@@ -6,13 +6,14 @@ and L3 with tree-PLRU replacement, a custom valid/ready CPU-side interface, and 
 memory-side interface. Synthesis, STA, and place-and-route all target **Sky130HD** via
 **Yosys + OpenSTA + OpenROAD**, in a single Makefile matching this portfolio's `Full-Adder` flow.
 
-> **Project status: Phase 1 of 12 — L1 Controllers (I$ and D$), built and Tier-1-verified.** The
-> shared L1 controller core (`rtl/l1/l1_cache_ctrl.sv`) and its I$/D$ wrappers pass their Tier-1
-> module-level Icarus tests (`make sim`, logs checked in under `sim/logs/`) and the Yosys
-> elaboration check with zero inferred latches (`make lint`). L2, L3, the line-size adapter, the
-> AXI4 fill engine and the integrated `mlc_cache_top` are not written yet. Synthesis, timing, area
-> and P&R figures are **NOT YET MEASURED**; the UVM tier is **NOT YET RUN (external simulator
-> required)**.
+> **Project status: Phase 2 of 12 — L1 controllers (I$ and D$) and the L2 controller, built and
+> Tier-1-verified.** The shared L1 core (`rtl/l1/l1_cache_ctrl.sv`) with its I$/D$ wrappers, the L2
+> controller (`rtl/l2/l2_cache_ctrl.sv`) and the parameterized tree-PLRU module
+> (`rtl/replace/plru_tree.sv`) pass their Tier-1 module-level Icarus tests (`make sim`: 229 checks
+> across 5 testbenches, logs checked in under `sim/logs/`) and the Yosys elaboration check with
+> zero inferred latches (`make lint`). L3, the line-size adapter, the AXI4 fill engine and the
+> integrated `mlc_cache_top` are not written yet. Synthesis, timing, area and P&R figures are
+> **NOT YET MEASURED**; the UVM tier is **NOT YET RUN (external simulator required)**.
 > Every number in this repository either cites a checked-in tool report, is labelled
 > **NOT YET MEASURED** (a locally-runnable figure that just hasn't been produced yet), or
 > **NOT YET RUN (external simulator required)** (the UVM verification tier — see below). See
@@ -63,7 +64,40 @@ reasoning and the accepted tradeoff recorded in
 | [`docs/02_architecture.md`](docs/02_architecture.md) | System architecture: hierarchy diagram, per-level address partitioning (derived, not asserted), module list, data flow |
 | [`docs/03_microarchitecture.md`](docs/03_microarchitecture.md) | Per-controller FSMs, the tree-PLRU algorithm with a worked example, the line-size adapter, the AXI4 fill engine |
 | [`docs/04_interfaces.md`](docs/04_interfaces.md) | Signal-level CPU-side, inter-level, and AXI4 memory-side interface specification |
-| [`docs/engineering_log.md`](docs/engineering_log.md) | Every architectural decision: options considered, decision, reason, and the tradeoff accepted — D-001 through D-017 |
+| [`docs/engineering_log.md`](docs/engineering_log.md) | Every architectural decision: options considered, decision, reason, and the tradeoff accepted — D-001 through D-021 |
+
+## Repository layout
+
+Follows the target tree in [`docs/00_project_plan.md`](docs/00_project_plan.md) §1. Directories
+for later phases are created when their phase starts, so the *planned* entries below do not exist
+yet.
+
+```
+mlc_cache_controller/
+├── rtl/
+│   ├── common/     mlc_pkg.sv, reset_sync.sv
+│   ├── l1/         l1_cache_ctrl.sv (shared core), l1_icache_ctrl.sv, l1_dcache_ctrl.sv
+│   ├── l2/         l2_cache_ctrl.sv
+│   ├── replace/    plru_tree.sv
+│   └── l3/, adapter/, mem_if/, top/                       planned, Phases 3-4
+├── sim/            Tier-1 module-level testbenches, behavioural stubs, checked-in logs (sim/logs/)
+├── scripts/        lint.ys (Yosys elaboration check); synthesis/STA/P&R scripts arrive in Phases 7-9
+├── docs/           requirements, architecture, microarchitecture, interfaces, engineering log,
+│                   and per-phase implementation plans (docs/superpowers/plans/)
+├── Makefile        sim, lint, clean (flow targets arrive with their phases)
+└── tb_uvm/, assertions/, formal/, constraints/, config/,
+    sky130hd/, build/, pnr_results/, results/               planned, Phases 5-10
+```
+
+## Quick start
+
+Needs Icarus Verilog 12 and Yosys (see Toolchain below).
+
+```bash
+make sim    # all Tier-1 module-level tests; writes sim/logs/*.log
+make lint   # Yosys elaboration check, zero latches/tristates (about 40 s)
+make help   # list targets
+```
 
 ## Verification: split by test level, not just by tool
 
@@ -99,7 +133,7 @@ See D-013 in `docs/engineering_log.md` for the full reasoning, including the dir
 ## Reproducing the numbers in this README
 
 There are no performance, area or timing numbers yet — nothing has been synthesized or measured.
-The only checked-in results so far are Phase 1's Tier-1 pass/fail logs: `make sim` regenerates
+The only checked-in results so far are the Tier-1 pass/fail logs from Phases 1-2: `make sim` regenerates
 `sim/logs/*.log`, and `make lint` re-runs the Yosys elaboration check. Every command that will
 eventually produce a number is specified in the phase table in `docs/00_project_plan.md`, so
 each claim will be checkable the moment it exists — per this project's `NOT YET MEASURED` policy.

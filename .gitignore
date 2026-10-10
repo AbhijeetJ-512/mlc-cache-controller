@@ -10,3 +10,7 @@ sim/*.vcd
 # Icarus default output of a bare `iverilog` run without -o, and any vvp image
 a.out
 *.vvp
+
+# Local tooling state: Claude Code worktrees/settings and subagent scratch workspaces
+.claude/
+.superpowers/
