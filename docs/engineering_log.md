@@ -1240,6 +1240,52 @@ are unchanged and pass; `make lint` is clean.
 
 ---
 
+## D-030 — Two boundary-contract tests, a narrow amendment to D-013
+
+**2026-10-10 · Phase 3**
+
+**Problem.** D-013 splits verification by level: Tier-1 tests check one module at a time, and the integrated
+hierarchy is verified only by the UVM environment on an external simulator. Both D-021 bugs (an L2 that
+answered a posted write, deadlocking L1, and leaving a stale response that a later fill took for its own data)
+lived on the L1 to L2 boundary and were invisible to every single-module test: each module's stub honours the
+contract by construction, so the module and its stub always agree. They were found by a reviewer and then by
+the implementer, each hand-building a throwaway L1 plus L2 simulation. The Phase 2 post-mortem recommended
+checking such a test in. Phase 3 adds a second boundary, L2 meeting L3's wider line through the adapter.
+
+**Options considered.**
+
+1. *Keep D-013 exactly as written.* Boundary bugs would only be found by review or by the UVM tier.
+2. *Allow boundary tests*: a test may join the real modules on one boundary, with hand-written stimulus, and
+   nothing larger.
+3. *A Tier-1 test of the whole hierarchy.* Contradicts D-013's purpose and duplicates the UVM tier.
+
+**Decision.** Option 2, approved by the project owner. `sim/tb_l1_l2.sv` joins the L1 data cache, the L2
+controller and `l3_stub`. `sim/tb_l2_l3_chain.sv` joins L2, the adapter, L3, the AXI4 fill engine and the AXI
+memory model, with L2 and everything below it on separate resets so a level can be made to forget a line the
+other still holds. The rule going forward: at most the units on one boundary, directed stimulus, no
+randomisation, no claim about the integrated hierarchy. The UVM tier remains its only verifier.
+
+**Reason.** The evidence is direct. Run against the L2 as it was before the D-021 fix, `tb_l1_l2` hangs
+(the deadlock, caught by the watchdog), fails "an unrelated fill after a forwarded L2 write-miss returns its own
+data" (the corruption), and hangs again if only the exit from `S_UPDATE_TAG` is reverted. Each test runs in
+well under a second.
+
+**Tradeoffs.** D-013's line is blurrier: the next request for a bigger Tier-1 integration test is no longer an
+automatic no, which is why the rule above is written down. The tests name internal signals of the units they
+join (`l2.state`), as the other testbenches already do.
+
+**Result.** `tb_l1_l2` (11 checks) and `tb_l2_l3_chain` (14). On a throwaway copy twelve faults were caught: the
+three pre-D-021 variants and a write-allocate that drops the merge, five adapter faults (wrong half bit, halves
+swapped, zero strobes, address bit 5 dropped, write data from the wrong source), and a write-back to the wrong
+address, an unaligned fill address and a write-back that is never issued. The first versions of these tests let
+three faults survive, and each exposed a design lesson: the stall caused by an L2 that waits for a response
+needed a *second* forwarded write behind the first; the adapter dropping address bit 5 went unseen until a
+write-back to the upper half was added, because every earlier write-back hit the lower half; and adding the
+second-write step to the corruption scenario moved its timing so the stale response no longer overlapped L1's
+fill, so the scenarios were separated and every mutant was re-run after each change.
+
+---
+
 *Phase 1 (L1 controllers) is complete; D-015 through D-017 were recorded during it. Phase 2 (L2
 controller, standalone) begins with D-018/D-019 above, applying every Yosys-compatibility lesson
 from Phase 1 (D-016, D-017) plus the two found here from the start, rather than rediscovering

@@ -43,6 +43,9 @@ $(call register,tb_l2,$(PKG) sim/tb_l2.sv sim/l3_stub.sv rtl/replace/plru_tree.s
 $(call register,tb_adapter,$(PKG) sim/tb_adapter.sv rtl/adapter/l2_l3_width_adapter.sv)
 $(call register,tb_axi4_fill_engine,$(PKG) sim/tb_axi4_fill_engine.sv sim/axi_mem_model.sv rtl/mem_if/axi4_fill_engine.sv)
 $(call register,tb_l3,$(PKG) sim/tb_l3.sv sim/axi_mem_model.sv rtl/mem_if/axi4_fill_engine.sv rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv rtl/l3/l3_cache_ctrl.sv)
+# Boundary-contract tests (D-030): real modules joined at one boundary. Not tests of the integrated hierarchy.
+$(call register,tb_l1_l2,$(PKG) sim/tb_l1_l2.sv sim/l3_stub.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_dcache_ctrl.sv rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv)
+$(call register,tb_l2_l3_chain,$(PKG) sim/tb_l2_l3_chain.sv sim/axi_mem_model.sv rtl/mem_if/axi4_fill_engine.sv rtl/adapter/l2_l3_width_adapter.sv rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv rtl/l3/l3_cache_ctrl.sv)
 
 SIM_BINS     := $(addprefix $(SIM_DIR)/,$(TESTS))
 TEST_TARGETS := $(addprefix test-,$(TESTS))
