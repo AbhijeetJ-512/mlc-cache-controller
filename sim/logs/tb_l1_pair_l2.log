@@ -1,0 +1,43 @@
+PASS: a fetch and a load that miss together: the fetch gets its own word
+PASS: a fetch and a load that miss together: the load gets its own word
+PASS: both L1 caches hit on the lines they just filled
+PASS: a fetch of a line the data side already brought in is served by L2
+PASS: a store from the data side is visible to a later fetch through L2
+PASS: fetch 0, concurrent with stores, returns its own word
+PASS: fetch 1, concurrent with stores, returns its own word
+PASS: fetch 2, concurrent with stores, returns its own word
+PASS: fetch 3, concurrent with stores, returns its own word
+PASS: fetch 4, concurrent with stores, returns its own word
+PASS: fetch 5, concurrent with stores, returns its own word
+PASS: fetch 6, concurrent with stores, returns its own word
+PASS: fetch 7, concurrent with stores, returns its own word
+PASS: stores forwarded during instruction fills: both L1 controllers accept the next request again (no deadlock)
+PASS: store 0 reached L2 while the instruction side was filling
+PASS: store 1 reached L2 while the instruction side was filling
+PASS: store 2 reached L2 while the instruction side was filling
+PASS: store 3 reached L2 while the instruction side was filling
+PASS: a stream of stores beside an instruction fill: both L1 controllers accept the next request again (no deadlock)
+PASS: the fetch asked for beside a stream of stores gets its own word
+PASS: the instruction fill is accepted within the first few requests of a store stream
+PASS: the stream's eight stores and the fill were all accepted exactly once
+PASS: store 0 of the stream reached L2
+PASS: store 1 of the stream reached L2
+PASS: store 2 of the stream reached L2
+PASS: store 3 of the stream reached L2
+PASS: store 4 of the stream reached L2
+PASS: store 5 of the stream reached L2
+PASS: store 6 of the stream reached L2
+PASS: store 7 of the stream reached L2
+PASS: a tie of two L2 hits (instruction side accepted last): the fetch gets its own word
+PASS: a tie of two L2 hits (instruction side accepted last): the load gets its own word
+PASS: a tie of two L2 hits (data side accepted last): the fetch gets its own word
+PASS: a tie of two L2 hits (data side accepted last): the load gets its own word
+PASS: a partial-strobe store reached L2 with its byte strobes
+PASS: a store forwarded to an L2 write miss, with a fetch behind it: both L1 controllers accept the next request again (no deadlock)
+PASS: a fetch asked for while L2 was busy with a write miss is served with its own word
+PASS: the store forwarded to the L2 write miss was write-allocated in L2
+PASS: after two stores to L2 write misses both sides still fill with their own words
+PASS: the first of two back-to-back stores reached L2
+PASS: the second of two back-to-back stores reached L2
+** ALL TESTS PASSED **
+sim/tb_l1_pair_l2.sv:346: $finish called at 5895000 (1ps)

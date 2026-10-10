@@ -1426,6 +1426,202 @@ testbenches.
 
 ---
 
+## D-033 — Two L1 controllers share L2 through an arbiter module
+
+**2026-10-10 · Phase 4**
+
+**Problem.** The architecture connects L1-I and L1-D to "the same L2" and says `mlc_cache_top` contains no logic of
+its own. But `l2_cache_ctrl` has exactly one upstream port, and two masters cannot be wired to one port without
+something deciding who is heard, who is answered and when. Nothing in the repository decided that, and it cannot be
+wiring: the response to a read that missed arrives cycles after the request, and has to reach the L1 that asked.
+
+**Options considered.**
+
+1. *A separate module, `l1_l2_arbiter`.* The top stays pure wiring; the arbiter gets its own Tier-1 test.
+2. *Arbitration logic inside `mlc_cache_top`.* Fewer files, but the top is no longer reviewable by inspection
+   and the logic has no standalone test.
+3. *Two upstream ports on L2.* Moves the problem into the controller L3 reuses, which would grow a port it does not
+   need and put Phase 2 and 3's verification back in play.
+
+For the policy when both sides ask in the same cycle: *round-robin* (the side that was not accepted last), or a fixed
+priority for either side. A continuous stream of write-through stores from L1-D can keep a fixed data-side priority
+from ever serving an instruction fetch.
+
+**Decision.** Option 1 with round-robin, both chosen by the project owner. `rtl/arbiter/l1_l2_arbiter.sv`: one
+requester is shown to L2 (the only one asking, or on a tie the one that did not win last; after reset a tie goes to the
+instruction side). Three bits of state: `busy` (a read that missed has been accepted and its response is not taken yet),
+`owner` (who asked) and `last`. A read that L2 answers in its accept cycle (a hit) belongs to the requester being
+accepted; a read that is not answered then is remembered, and its response and its `resp_ready` are routed to the
+owner. L2 is shown no request while a read is outstanding. Writes are posted (D-021), so they never set `busy`. The
+response line is not routed: the top fans it out to both L1 controllers and only the one given `resp_valid` uses it.
+
+**Reason.** It is the only option that keeps the promise the architecture made about the top, adds one small
+module, and leaves the Phase 2 and 3 controllers untouched. Round-robin costs one flip-flop and removes a starvation
+case that is real, not hypothetical.
+
+**Tradeoffs.** A fourth module between L1 and L2 (it puts no register on the request or response paths, and its three bits of state are bookkeeping; what the extra
+mux costs in latency is not measured, PF-03). `02_architecture.md` section 3 and the Phase 4 file list in the
+project plan are amended. The arbiter relies on three properties of L1 and L2 (L2 holds `req_ready` low after a read
+miss until it answers; a hit is answered in its accept cycle; an L1 raises `resp_ready` only while it waits for its own
+fill), which `tb_arbiter` models and `tb_l1_pair_l2` checks against the real ones.
+
+**Result.** `sim/tb_arbiter.sv` (38 checks; 27 when first written, the rest added after D-036): its own requester
+drivers and a model of L2's port. Nineteen mutants of the arbiter were each caught (responses routed to the wrong side,
+fixed priorities either way, winner-stays, a round-robin bit that follows the selection, a read or a write that leaves the
+arbiter waiting, a lost owner, a response released before its owner took it, both sides told they were accepted, and
+data, strobe, write-enable and address muxes crossed); a twentieth, an idle-select change, is equivalent. The
+independent reviewer's 33 mutants: 26 are caught and 7 survive as equivalent (D-036 gives the reasons).
+`sim/tb_l1_pair_l2.sv` (41 checks; 30 when first written) is a third boundary test within D-030's rule (the units on one
+boundary, directed stimulus): the real L1-I and L1-D, the arbiter and the real L2 over `l3_stub`. It checks a fetch and a
+load that miss together, a line one side brought in served to the other from L2, two L2 hits asked for in the same
+cycle (with either side accepted last), a store from the data side visible to a later fetch, a partial-strobe store,
+fills beside stores, stores to lines L2 forgot (posted write misses) with a fetch behind them, and a stream of eight
+stores beside a fill, all read back (a fixed data-side priority fails it). Of my 19 arbiter mutants, 13 also fail this
+test; the rest are visible only to `tb_arbiter` (fixed instruction-side priority cannot starve the data side because a
+real L1 needs at least two cycles to ask again; the others need exact ties, a late `resp_ready` or a requester that
+drops its request, which a real L1 never produces). A pre-D-021 L2 behind the arbiter fails it too.
+
+---
+
+## D-034 — The top-level contract, and how "structural only" is checked
+
+**2026-10-10 · Phase 4**
+
+**Problem.** `mlc_cache_top` had a role (integration only) but no port list, no answer for the reset, and no answer for
+the AXI4 signals the fill engine does not drive (the Phase 3 re-review recalled that `AxPROT` in particular has no default
+in AXI4; that was not checked against the specification, which is not in this repository). And "contains no logic, confirmable by inspection" is a claim a reviewer can only take on trust.
+
+**Options considered.**
+
+1. *Port list.* Two CPU ports (a read-only fetch port and a load/store port), one AXI4 master port, the sticky
+   `mem_err`, `clk` and an asynchronous `rst_n`. Nothing else is needed from outside.
+2. *Sideband signals.* (a) leave them off, trusting AXI4's defaults, or (b) drive constants chosen by parameters
+   with sensible defaults. AXI4 IDs are left off: one transaction is in flight at a time.
+3. *Reset.* Synchronise `rst_n` once in the top with the existing `reset_sync` (CR-02), or leave it to the integrator.
+4. *Checking "structural only".* Review by eye, or a script.
+
+**Decision.** (1) as above, with the AXI4 master port prefixed `m_axi_`. (2b): `AXI_PROT = 3'b000`, `AXI_CACHE = 4'b0011`
+(normal, non-cacheable, bufferable), `AXI_QOS = 0`, `AXI_REGION = 0`, `AxLOCK = 0`, as top parameters; the integrator
+overrides them. (3) The top instantiates `reset_sync`, so the requirement is met inside the IP. (4) `scripts/check_top.py`
+runs in `make check` (via `make top`) beside an Icarus `-Wall` elaboration, which must print nothing, and a Yosys
+`hierarchy -check` / `check -assert` block in `make lint`, run on the flattened top so that it also sees a combinational
+loop running through several units.
+
+**Reason.** Constants have to be defined somewhere; as parameters they cost nothing and the integrator keeps the choice.
+The script turns the inspection promise into a failing build: no `always`, `initial`, `generate`, loop, function,
+ternary or `.*`; every assign is a wire or a constant; every instance port connected by name, none unknown; every
+signal driven exactly once and read at least once; and every signal joins exactly the units the architecture says it
+joins (a table in the script written from the module graph, so a signal wired to the wrong unit is caught even when
+its width fits), and every port is wired to a signal named for it once the boundary prefixes are stripped
+(`.dn_resp_line(l2_resp_line)`, `.req_valid(l2_req_valid)`), with the clock and reset ports pinned to `clk` and
+`rst_n_sync`. The name rule is what catches two same-width signals swapped between the same pair of units, or the
+clock and reset crossed on one unit; it makes the wire names part of the interface.
+
+**Tradeoffs.** The defaults are a judgment, not a measurement: `AxPROT = 0` claims unprivileged, secure data access
+for lines that mix instruction and data traffic, and `AxCACHE = 0011` suits a simple memory but not necessarily a
+coherent interconnect. They are parameters for that reason, and are labelled as defaults in `04_interfaces.md`. The
+module-graph table is a second statement of the topology and has to be updated with the architecture. The checks
+cannot see a swap that keeps both the names and the topology consistent (a signal wrongly named *and* wrongly wired the
+same way at both ends), a correct-looking top whose units are wrong, or anything about behaviour; only the Phase 5 UVM
+environment sees those. This is why Phase 4 makes no functional claim.
+
+**Result.** Twenty-five faults injected into the top file (a dropped connection, an implicit `.*`, an `always` block, an
+operator in an assign, a signal driven by two units, an output left open, a port that does not exist, an unused wire, an
+expression in a connection, a ternary, a signal wired to the wrong unit, the clock and reset crossed on one unit, two
+control signals swapped on L2, two handshake signals swapped on the engine, an instance of an unknown module, the two
+L1 controllers crossed at the arbiter, a gate primitive, a `z` constant, a sideband output taken from a signal, the
+sideband parameters crossed, a second statement hidden after a `;`, a parameter override, a `defparam`) are each
+caught by the script, and a narrowed bus is caught by Icarus (`-Wall` warns on the port width; Yosys only prints a resizing warning, which is why both
+run). Yosys's `check -assert` independently catches an undriven or doubly driven signal. Flattened, it also finds a
+combinational loop that runs through the arbiter and L2: a copy of the arbiter whose request to L2 waits for L2's
+`req_ready` is reported as a logic loop. `make top` takes under a second (0.5 s measured). Adding the arbiter and the
+top to `make lint` raised it from about 90 s to about 170 s (166 s measured).
+
+The first version of the script, with a looser rule set, passed a crossed clock and reset, the two L1 controllers crossed
+at the arbiter, a gate primitive and a `z` on a sideband output; D-036 records how the independent review found
+that and what the script reads today.
+
+---
+
+## D-035 — L2 and L3 lose the downstream write-data ports nobody used
+
+**2026-10-10 · Phase 4**
+
+**Problem.** Since D-024 a write-back leaves L2 and L3 as a whole line on `dn_req_line`. The old `dn_req_wdata` and
+`dn_req_wstrb` outputs were tied to zero in every state and read by nothing (the adapter and the engine have no input for
+them), but remained ports. The Phase 3 PR review flagged them (finding on `l2_cache_ctrl.sv`), and Phase 4's "no
+unconnected ports" check would otherwise need a standing exception for two outputs of each unit.
+
+**Decision.** Remove them from `l2_cache_ctrl` and `l3_cache_ctrl`, and the matching unused inputs from `l3_stub` and the
+testbench wiring. Nothing else changed.
+
+**Reason.** A port that is always zero is an interface that advertises a write payload that does not exist. Removing it
+makes the top's connection check exact.
+
+**Tradeoffs.** Touches five testbenches (wiring only). The L1 controllers keep their `dn_req_wdata`/`dn_req_wstrb`,
+which carry real word-sized stores to L2.
+
+**Result.** `make sim` passes unchanged: the 502 checks of Phase 3 are all still there (the new tests add to them), and
+no test needed a change beyond deleting the connections.
+
+---
+
+## D-036 — The independent review of Phase 4: gaps it found and what was done about each
+
+**2026-10-10 · Phase 4**
+
+**Problem.** Two reviews of the Phase 4 diff: my own reading of the pull request, and an independent agent that had not
+seen the work, told to attack the tests with mutants and the structural check with faulty tops. Neither found wrong
+RTL (the independent reviewer traced the arbiter against the real L1 and L2 in every state it could think of, and found
+no lost, duplicated or misrouted request). Both found places where the checks were weaker than the documents said.
+
+**Findings and decisions.**
+
+- *No test gave an L2 hit to one side while the other also asked.* Three mutants that handed the hit's data to the wrong
+  L1 on a tie (routing by `!up0_req_valid`, by `last`, or always to side 1) passed `tb_arbiter` and `tb_l1_pair_l2`:
+  every two-sided case in the pair test missed in L2. Both tests now include a tie of two hits with either side accepted
+  last, and a tie of a hit and a miss.
+- *Fairness was never tested while L2 stalls.* `last` advancing when a request is shown rather than accepted starved reads
+  behind a stream of write misses (12 writes before the first read). Now tested; so is `last` updating on a lone
+  request (a lone request after reset, then a tie).
+- *The structural check still accepted the two L1 controllers crossed at the arbiter*, because `up0_` and `up1_` both
+  became the same core name and both L1 signals touch the arbiter. The name rule now ties `up0_` to `i_dn_` and `up1_` to
+  `d_dn_`; D-034 had called the blind spot "wrongly named and wrongly wired at both ends" and was wrong about it.
+- *Logic could still be put in the top.* An unnamed gate primitive, `z`/`x` constants, a sideband output taken from a signal
+  or from the wrong parameter, a second statement on a line, a parameter override and `defparam` all passed. The script
+  now reads the top statement by statement, accepts only declarations, constants, instances without overrides, and
+  `assign` of a constant or the matching parameter to an AXI4 sideband output, and rejects everything else.
+- *Smaller test gaps.* The two-sided write path of requester 0 and the partial strobe were untested (equivalent in the
+  system, since L1-I never writes, but the arbiter is a unit); addresses were all line-aligned; the store stream's words 1
+  to 7 were never read back; the starvation bound was loose; a requester that drops its request once accepted (nothing in
+  the arbiter requires it to hold it) was not exercised. All added.
+- *Documents.* The README, the architecture and the log said the top check "proves" or "confirms" the top has no logic; they
+  now say what the script rejects and point at D-034 for what it cannot see. The 04 section 5 reset sentence, the stale
+  `sim/` list in the project plan, VR-07's unit list, the README's `make sim` time and a doubled word were fixed; the
+  AXI4 sideband defaults now say plainly that `AxPROT` 0 means secure and unprivileged and that one `AXI_CACHE` value
+  drives both channels.
+- *Left as it is.* `make lint` elaborates each unit twice (about 80 s); the cache sizes are not parameters of the top
+  (a consequence of the package-only parameter decision, D-016, not of this phase); the top is not simulated, so PF-03
+  stays NOT YET MEASURED. The independent reviewer's own simulation of the integrated top (misses to memory, a store
+  written back as one AXI burst and read back, no AXI protocol errors) is its evidence, not this repository's, and is not
+  claimed here.
+
+**Equivalent mutants.** Seven of the reviewer's 33 arbiter mutants survive `tb_arbiter`, each with a reason: `last` set when
+a read's response is taken instead of when it is accepted (blocking: nothing else is accepted between, so the value is
+the same); a request-ready not gated by `busy` (L2 is not idle while busy); a request-ready that also needs the request
+valid (ready without valid is don't-care); the busy bit cleared without the busy term (clearing a clear bit); the owner
+reset to 1 (read only while busy, when it has just been set); the selected-valid being either valid (the select always
+points at a valid side if there is one); and the tie select flipping while busy (select is unused while busy).
+
+**Result.** `tb_arbiter` 27 to 38 checks and `tb_l1_pair_l2` 30 to 41; 581 checks in 13 testbenches. Of the reviewer's 33 arbiter
+mutants `tb_arbiter` now catches 26; the pair test catches the three tie-of-hits mutants. The reviewer's 15 attacks on the top
+file: 13 are rejected by the script today and the other two are a changed parameter default (a design choice, not
+a fault) and a combinational loop (found by the flattened Yosys block). `make check` takes 214 s on the last run
+(187 s on an earlier run of the same logic, 202 s on the reviewer's; the machine is shared, so expect about 10 to 15%
+either way).
+
+---
+
 *Phase 1 (L1 controllers) is complete; D-015 through D-017 were recorded during it. Phase 2 (L2
 controller, standalone) begins with D-018/D-019 above, applying every Yosys-compatibility lesson
 from Phase 1 (D-016, D-017) plus the two found here from the start, rather than rediscovering

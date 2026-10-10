@@ -32,8 +32,6 @@ module tb_l1_l2;
   // L2 downstream == stub
   wire                               l2_dn_req_valid, l2_dn_req_ready, l2_dn_req_we, l2_dn_resp_valid, l2_dn_resp_ready;
   wire  [mlc_pkg::ADDR_W-1:0]        l2_dn_req_addr;
-  wire  [mlc_pkg::DATA_W-1:0]        l2_dn_req_wdata;
-  wire  [mlc_pkg::BYTES_PER_WORD-1:0] l2_dn_req_wstrb;
   wire  [mlc_pkg::L2_LINE_B*8-1:0]   l2_dn_req_line, l2_dn_resp_line;
 
   l1_dcache_ctrl l1 (
@@ -50,7 +48,7 @@ module tb_l1_l2;
     .req_we(l1_dn_req_we), .req_wdata(l1_dn_req_wdata), .req_wstrb(l1_dn_req_wstrb),
     .resp_valid(l1_dn_resp_valid), .resp_ready(l1_dn_resp_ready), .resp_line(l2_resp_line),
     .dn_req_valid(l2_dn_req_valid), .dn_req_ready(l2_dn_req_ready), .dn_req_addr(l2_dn_req_addr),
-    .dn_req_we(l2_dn_req_we), .dn_req_wdata(l2_dn_req_wdata), .dn_req_wstrb(l2_dn_req_wstrb),
+    .dn_req_we(l2_dn_req_we),
     .dn_req_line(l2_dn_req_line), .dn_resp_valid(l2_dn_resp_valid), .dn_resp_ready(l2_dn_resp_ready),
     .dn_resp_line(l2_dn_resp_line)
   );
@@ -58,7 +56,7 @@ module tb_l1_l2;
   l3_stub mem (
     .clk, .rst_n, .hold_not_ready(1'b0),
     .req_valid(l2_dn_req_valid), .req_ready(l2_dn_req_ready), .req_addr(l2_dn_req_addr),
-    .req_we(l2_dn_req_we), .req_wdata(l2_dn_req_wdata), .req_wstrb(l2_dn_req_wstrb), .req_line(l2_dn_req_line),
+    .req_we(l2_dn_req_we), .req_line(l2_dn_req_line),
     .resp_valid(l2_dn_resp_valid), .resp_ready(l2_dn_resp_ready), .resp_line(l2_dn_resp_line)
   );
 

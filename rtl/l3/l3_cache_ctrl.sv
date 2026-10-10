@@ -25,8 +25,6 @@ module l3_cache_ctrl #(
   input  logic                              dn_req_ready,
   output logic [mlc_pkg::ADDR_W-1:0]         dn_req_addr,
   output logic                              dn_req_we,
-  output logic [mlc_pkg::DATA_W-1:0]         dn_req_wdata,
-  output logic [mlc_pkg::BYTES_PER_WORD-1:0] dn_req_wstrb,
   output logic [LINE_B*8-1:0]                dn_req_line,
   input  logic                              dn_resp_valid,
   output logic                              dn_resp_ready,

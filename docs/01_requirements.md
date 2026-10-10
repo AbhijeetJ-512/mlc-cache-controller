@@ -139,7 +139,7 @@ Full derivation and the address-field diagrams are in `02_architecture.md` §2. 
 |---|---|---|
 | PF-01 | M | A hit at any level shall complete in the same cycle the request is accepted (combinational tag-compare, registered data mux) — no bubble on the common case, at any level, independent of associativity. |
 | PF-02 | M | Miss penalty at a level shall be deterministic given which further levels also miss, and shall be documented exactly (in cycles, as a function of parameters) in `03_microarchitecture.md`. |
-| PF-03 | S | Miss penalty shall be verified by simulation, not only predicted. **Actual measured miss-penalty cycle counts: NOT YET MEASURED** — to be filled from simulation in Phase 4. |
+| PF-03 | S | Miss penalty shall be verified by simulation, not only predicted. **Actual measured miss-penalty cycle counts: NOT YET MEASURED.** This was meant to be filled in Phase 4, but D-013 allows no Tier-1 simulation of the integrated hierarchy, so a full-path figure has to wait for Phase 5; figures at a single boundary (L1 to L2, L2 to L3 through the adapter) could be measured earlier and are not yet. |
 
 ### 5.2 Throughput
 
@@ -217,7 +217,7 @@ tree, each verified in isolation. Explicitly **not** in scope here: the integrat
 |---|---|---|
 | VR-05 | M | The UVM environment shall follow the transaction / sequence / sequencer / driver / monitor / agent / scoreboard / env / test / config layering, one file per component, matching the structure already used by this portfolio's `APB_Design_and_Verification` project. |
 | VR-06 | M | A `uvm_sequence_item` transaction shall model one CPU-side request (address, we, wdata, wstrb) with `rand` fields and `constraint` blocks enforcing legal ranges (address alignment where applicable, legal `wstrb` encodings). A second transaction type shall model one AXI4 beat on the memory-side agent. |
-| VR-07 | M | The UVM testbench's DUT shall be the fully integrated `mlc_cache_top` (all of L1-I, L1-D, L2, L3, the adapter, and the AXI4 fill engine wired together) — this is the requirement that makes this tier the sole functional verifier of the integrated hierarchy, not merely a supplementary deep-testing pass over what Tier 1 already covers. |
+| VR-07 | M | The UVM testbench's DUT shall be the fully integrated `mlc_cache_top` (all of L1-I, L1-D, the L1 arbiter, L2, L3, the adapter, and the AXI4 fill engine wired together) — this is the requirement that makes this tier the sole functional verifier of the integrated hierarchy, not merely a supplementary deep-testing pass over what Tier 1 already covers. |
 | VR-08 | M | Sequences shall include at minimum: cold-miss propagation through however many levels actually miss, repeated-hit, conflict-miss-thrash (per level), dirty-eviction and clean-eviction write-back chains across levels, mixed I$/D$ traffic, a bounded-length PLRU-exhaustive sequence, and a constrained-random mixed-traffic sequence for maximum-coverage regression. |
 | VR-09 | M | A UVM scoreboard shall check every RTL response against a SystemVerilog reference/predictor model of the full hierarchy's cache state (which lines are present at which level, dirty status, PLRU way selection per set). No test shall pass on waveform inspection alone. |
 | VR-10 | M | Functional coverage (`covergroup`/`coverpoint`) shall be defined for: hit/miss per level, eviction dirty vs. clean, PLRU way selected (each way, each tree depth), CPU-side backpressure patterns, AXI4 backpressure patterns. Coverage closure criteria shall be defined before this tier is considered closed. |

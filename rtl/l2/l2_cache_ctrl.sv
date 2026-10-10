@@ -25,8 +25,6 @@ module l2_cache_ctrl #(
   input  logic                              dn_req_ready,
   output logic [mlc_pkg::ADDR_W-1:0]         dn_req_addr,
   output logic                              dn_req_we,
-  output logic [mlc_pkg::DATA_W-1:0]         dn_req_wdata,
-  output logic [mlc_pkg::BYTES_PER_WORD-1:0] dn_req_wstrb,
   output logic [LINE_B*8-1:0]                dn_req_line,
   input  logic                              dn_resp_valid,
   output logic                              dn_resp_ready,
@@ -230,16 +228,15 @@ module l2_cache_ctrl #(
       dn_req_valid = 1'b1;
       dn_req_addr  = {victim_tag_latched, miss_index, {OFFSET_W{1'b0}}};
       dn_req_we    = 1'b1;
-      dn_req_wdata = '0; dn_req_wstrb = '0;
       dn_req_line  = victim_line_latched;
     end else if (state == S_ALLOC_FILL) begin
       dn_req_valid = 1'b1;
       dn_req_addr  = miss_addr;
       dn_req_we    = 1'b0;
-      dn_req_wdata = '0; dn_req_wstrb = '0; dn_req_line = '0;
+      dn_req_line = '0;
     end else begin
       dn_req_valid = 1'b0; dn_req_addr = '0; dn_req_we = 1'b0;
-      dn_req_wdata = '0; dn_req_wstrb = '0; dn_req_line = '0;
+      dn_req_line = '0;
     end
   end
 

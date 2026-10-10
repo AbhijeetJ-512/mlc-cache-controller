@@ -18,8 +18,6 @@ module tb_l2;
 
   logic                                  dn_req_valid, dn_req_ready, dn_req_we, dn_resp_valid, dn_resp_ready;
   logic [mlc_pkg::ADDR_W-1:0]             dn_req_addr;
-  logic [mlc_pkg::DATA_W-1:0]             dn_req_wdata;
-  logic [mlc_pkg::BYTES_PER_WORD-1:0]     dn_req_wstrb;
   logic [LINE_W-1:0]                      dn_req_line;
   logic [LINE_W-1:0]                      dn_resp_line;
   logic                                  hold_not_ready = 1'b0;
@@ -32,7 +30,7 @@ module tb_l2;
     .clk(clk), .rst_n(rst_n), .hold_not_ready(hold_not_ready),
     .req_valid(dn_req_valid), .req_ready(dn_req_ready),
     .req_addr(dn_req_addr), .req_we(dn_req_we),
-    .req_wdata(dn_req_wdata), .req_wstrb(dn_req_wstrb), .req_line(dn_req_line),
+    .req_line(dn_req_line),
     .resp_valid(dn_resp_valid), .resp_ready(dn_resp_ready), .resp_line(dn_resp_line)
   );
 

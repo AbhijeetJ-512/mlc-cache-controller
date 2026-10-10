@@ -24,6 +24,11 @@ address on the CPU-side port is a physical address (D-011).
                          └─────────┬─────────┘
                                    v
                          ┌───────────────────┐
+                         │    l1_l2_arbiter    │   round-robin, one L2 port
+                         │ (routes responses)  │   shared by both L1s (D-033)
+                         └─────────┬─────────┘
+                                   v
+                         ┌───────────────────┐
                          │       L2 cache      │
                          │ (4-way SA, WB, PLRU │
                          │   32KiB/32B line)   │
@@ -50,9 +55,10 @@ address on the CPU-side port is a physical address (D-011).
                               AXI4 to memory
 ```
 
-Both L1 instances present the same interface shape and connect to the *same* L2 instance
-(unified L2, per the locked scope decision) — L2 does not know or care whether a request
-originated from L1-I or L1-D.
+Both L1 instances present the same interface shape and share the *same* L2 instance (unified L2,
+per the locked scope decision) through `l1_l2_arbiter` (D-033) — L2 has one upstream port and
+does not know or care whether a request originated from L1-I or L1-D. The arbiter is the only
+place that knows there are two requesters.
 
 ---
 
@@ -132,12 +138,13 @@ line.
 | Module | Responsibility | Does NOT do |
 |---|---|---|
 | `l1_icache_ctrl` / `l1_dcache_ctrl` | Direct-mapped write-through cache: tag compare, hit data return, write-through forwarding, miss request to L2 | No replacement policy (nothing to replace among 1 way); no write-back state |
+| `l1_l2_arbiter` | Lets the two L1 controllers share L2's single upstream port: shows L2 one request at a time (round-robin on a tie), remembers which L1 owns an outstanding read, and routes the response and its `resp_ready` to that owner | No cache state, no addresses decoded, never changes a request; no register on the request or response path (what that costs in latency is not measured, PF-03) |
 | `l2_cache_ctrl` | 4-way set-associative write-back cache: tag compare across ways, PLRU-based victim selection, dirty tracking, eviction write-back to the adapter | Does not know about L1's existence or count (a request looks the same regardless of which L1 instance issued it) |
 | `l2_l3_width_adapter` | Splits one L3 line into 2 ordered L2-line beats on fill; merges 2 L2-line write-backs into one (possibly partial-dirty) L3 line update | No tag/valid/dirty state of its own — it is a sequencer/router, not a cache |
 | `l3_cache_ctrl` | 8-way set-associative write-back cache, same controller design as L2 parameterized wider; drives the AXI4 fill engine on its own misses/evictions | Does not talk AXI4 directly (that is `axi4_fill_engine`'s job) |
 | `axi4_fill_engine` | AXI4 master: converts a "fetch this line" / "write back this line" request into the correct fixed-length burst | No cache state; purely a protocol-shaping module |
 | `plru_tree` | Parameterized N-way tree-PLRU: victim selection and per-access state update | Reused, unmodified, by both `l2_cache_ctrl` and `l3_cache_ctrl` at their respective `N` |
-| `mlc_cache_top` | Structural integration only: instantiates and wires the above | Contains no logic of its own — a reviewer verifying "is there hidden behavior in the top" can confirm it by inspection alone |
+| `mlc_cache_top` | Structural integration only: instantiates and wires the above, synchronises the reset with `reset_sync`, and drives constants on the AXI4 sideband signals the engine does not use (D-034) | Contains no logic of its own — a reviewer verifying "is there hidden behavior in the top" can confirm it by inspection alone, and `scripts/check_top.py` (part of `make check`) rejects any logic of the kinds it knows (blocks, gates, operators, ternaries, parameter overrides) and any mis-wire it can see; D-034 lists what it cannot |
 
 ---
 

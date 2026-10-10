@@ -1,0 +1,40 @@
+PASS: requester 0: a read that hits in L2 gets its own line
+PASS: requester 1: a read that hits in L2 gets its own line
+PASS: requester 0: a read that misses in L2 gets its own line
+PASS: requester 1: a read that misses in L2 gets its own line
+PASS: L2 accepted exactly the four reads
+PASS: two simultaneous misses: each requester gets its own line
+PASS: after reset a tie goes to requester 0, then the other one is served
+PASS: after requester 0 won last, a tie goes to requester 1 first
+PASS: after requester 0 was accepted alone, a tie goes to requester 1
+PASS: a tie of two L2 hits after reset: each requester gets its own line
+PASS: a tie of two hits is served requester 0 first after reset
+PASS: a tie of two L2 hits after requester 0 won: each gets its own line
+PASS: a tie of two L2 hits after requester 1 won: each gets its own line
+PASS: a tie of a miss and a hit: each requester gets its own line
+PASS: a hit asked for during the other side's miss gets its own line, not the miss's
+PASS: the second request is not accepted until the first read's response has been taken
+PASS: the miss response waits for its owner's resp_ready
+PASS: late resp_ready: both requesters still get their own lines
+PASS: late resp_ready: the other side was served after, not instead
+PASS: a write forwarded during a read miss does not disturb the read's response
+PASS: the write waited for the read's response, then reached L2 intact
+PASS: a read asked for while L2 is busy behind a write miss is served afterwards
+PASS: the read is accepted only after L2 finished the write, and the write arrived intact
+PASS: two writes in the same cycle: each reaches L2 with its own address, data and strobes, requester 0 first
+PASS: two streams of four read misses: all eight were served
+PASS: two continuously asking requesters alternate, starting with requester 0
+PASS: against a continuous write stream all four reads were served
+PASS: at most one write is served between two of the reads: the write stream cannot starve them
+PASS: against a stream of write misses all four reads were served
+PASS: at most one write miss is served between two reads: a stalled L2 does not let the writes starve the reads
+PASS: a requester that drops its read request once accepted still gets its response
+PASS: and the arbiter is free for the next request
+PASS: after a reset in the middle of a read requester 1 is served normally
+PASS: and so is requester 0, with a miss
+PASS: a response was never given to both requesters
+PASS: a response was never given to a requester that was not waiting, or dropped
+PASS: both requesters were never told their request was accepted in the same cycle
+PASS: L2 was never shown a request while one of its reads was outstanding
+** ALL TESTS PASSED **
+sim/tb_arbiter.sv:425: $finish called at 3325000 (1ps)
