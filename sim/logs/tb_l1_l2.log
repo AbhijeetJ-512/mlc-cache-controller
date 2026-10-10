@@ -1,0 +1,13 @@
+PASS: cold read through L1 and L2 returns the stub's word
+PASS: the same word again is an L1 hit
+PASS: write forwarded to an L2 hit: L1 accepts the next request again (no deadlock)
+PASS: the written word reads back from L1
+PASS: write forwarded to an L2 miss: L1 accepts the next request again (no deadlock)
+PASS: an unrelated fill after a forwarded L2 write-miss returns its own data
+PASS: a conflicting line evicts X from L1
+PASS: X refilled from L2 carries the word the L2 write-allocate merged
+PASS: two back-to-back writes forwarded to L2 misses: L1 accepts the next request again (no deadlock)
+PASS: the first write-allocated word is in L2
+PASS: the second write-allocated word is in L2
+** ALL TESTS PASSED **
+sim/tb_l1_l2.sv:171: $finish called at 1165000 (1ps)

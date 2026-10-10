@@ -1,0 +1,100 @@
+PASS: 2-way: reset victim is way 0
+PASS: 8-way: reset victim is way 0
+PASS: 2-way [0]: victim matches the table
+PASS: 2-way [1]: victim matches the table
+PASS: 2-way [0,0]: victim matches the table
+PASS: 2-way [0,1]: victim matches the table
+PASS: 2-way [1,0]: victim matches the table
+PASS: 2-way [1,1]: victim matches the table
+PASS: 8-way [0]: victim matches the table
+PASS: 8-way [1]: victim matches the table
+PASS: 8-way [2]: victim matches the table
+PASS: 8-way [3]: victim matches the table
+PASS: 8-way [4]: victim matches the table
+PASS: 8-way [5]: victim matches the table
+PASS: 8-way [6]: victim matches the table
+PASS: 8-way [7]: victim matches the table
+PASS: 8-way [0,0]: victim matches the table
+PASS: 8-way [0,1]: victim matches the table
+PASS: 8-way [0,2]: victim matches the table
+PASS: 8-way [0,3]: victim matches the table
+PASS: 8-way [0,4]: victim matches the table
+PASS: 8-way [0,5]: victim matches the table
+PASS: 8-way [0,6]: victim matches the table
+PASS: 8-way [0,7]: victim matches the table
+PASS: 8-way [1,0]: victim matches the table
+PASS: 8-way [1,1]: victim matches the table
+PASS: 8-way [1,2]: victim matches the table
+PASS: 8-way [1,3]: victim matches the table
+PASS: 8-way [1,4]: victim matches the table
+PASS: 8-way [1,5]: victim matches the table
+PASS: 8-way [1,6]: victim matches the table
+PASS: 8-way [1,7]: victim matches the table
+PASS: 8-way [2,0]: victim matches the table
+PASS: 8-way [2,1]: victim matches the table
+PASS: 8-way [2,2]: victim matches the table
+PASS: 8-way [2,3]: victim matches the table
+PASS: 8-way [2,4]: victim matches the table
+PASS: 8-way [2,5]: victim matches the table
+PASS: 8-way [2,6]: victim matches the table
+PASS: 8-way [2,7]: victim matches the table
+PASS: 8-way [3,0]: victim matches the table
+PASS: 8-way [3,1]: victim matches the table
+PASS: 8-way [3,2]: victim matches the table
+PASS: 8-way [3,3]: victim matches the table
+PASS: 8-way [3,4]: victim matches the table
+PASS: 8-way [3,5]: victim matches the table
+PASS: 8-way [3,6]: victim matches the table
+PASS: 8-way [3,7]: victim matches the table
+PASS: 8-way [4,0]: victim matches the table
+PASS: 8-way [4,1]: victim matches the table
+PASS: 8-way [4,2]: victim matches the table
+PASS: 8-way [4,3]: victim matches the table
+PASS: 8-way [4,4]: victim matches the table
+PASS: 8-way [4,5]: victim matches the table
+PASS: 8-way [4,6]: victim matches the table
+PASS: 8-way [4,7]: victim matches the table
+PASS: 8-way [5,0]: victim matches the table
+PASS: 8-way [5,1]: victim matches the table
+PASS: 8-way [5,2]: victim matches the table
+PASS: 8-way [5,3]: victim matches the table
+PASS: 8-way [5,4]: victim matches the table
+PASS: 8-way [5,5]: victim matches the table
+PASS: 8-way [5,6]: victim matches the table
+PASS: 8-way [5,7]: victim matches the table
+PASS: 8-way [6,0]: victim matches the table
+PASS: 8-way [6,1]: victim matches the table
+PASS: 8-way [6,2]: victim matches the table
+PASS: 8-way [6,3]: victim matches the table
+PASS: 8-way [6,4]: victim matches the table
+PASS: 8-way [6,5]: victim matches the table
+PASS: 8-way [6,6]: victim matches the table
+PASS: 8-way [6,7]: victim matches the table
+PASS: 8-way [7,0]: victim matches the table
+PASS: 8-way [7,1]: victim matches the table
+PASS: 8-way [7,2]: victim matches the table
+PASS: 8-way [7,3]: victim matches the table
+PASS: 8-way [7,4]: victim matches the table
+PASS: 8-way [7,5]: victim matches the table
+PASS: 8-way [7,6]: victim matches the table
+PASS: 8-way [7,7]: victim matches the table
+PASS: 8-way: after touching ways 0..7 in order, way 0 is the victim
+PASS: 8-way: touching way 0 again moves the victim to the other half (way 4)
+PASS: 8-way: touching 1, 2, 4 makes way 0 the victim
+PASS: 8-way: touching 0, 3, 5 makes way 1 the victim
+PASS: 8-way: touching 3, 0, 6 makes way 2 the victim
+PASS: 8-way: touching 2, 1, 7 makes way 3 the victim
+PASS: 8-way: touching 5, 6, 0 makes way 4 the victim
+PASS: 8-way: touching 4, 7, 1 makes way 5 the victim
+PASS: 8-way: touching 7, 4, 2 makes way 6 the victim
+PASS: 8-way: touching 6, 5, 3 makes way 7 the victim
+PASS: per-set: the accessed set's victim follows the access
+PASS: per-set: set 0 is untouched by an access to set 2
+PASS: per-set: set 1 is untouched by an access to set 2
+PASS: per-set: set 3 is untouched by an access to set 2
+PASS: per-set: the set being read does not follow accesses to another set
+PASS: per-set: set 3 holds its own tree
+PASS: per-set: set 2 kept its tree through the accesses to set 3
+PASS: per-set: set 0 was never touched
+** ALL TESTS PASSED **
+sim/tb_plru_ways.sv:180: $finish called at 4489000 (1ps)

@@ -21,4 +21,12 @@ package mlc_pkg;
   localparam int L2_LINE_B     = 32;
   localparam int L2_WAYS       = 4;
 
+  // L3 parameters (01_requirements.md PM-06..PM-08; 02_architecture.md §2.3)
+  localparam int L3_CAPACITY_B = 262144;
+  localparam int L3_LINE_B     = 64;
+  localparam int L3_WAYS       = 8;
+
+  // Memory-side AXI4 data width (01_requirements.md PM-11)
+  localparam int AXI_DATA_W    = 32;
+
 endpackage

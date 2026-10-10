@@ -17,17 +17,20 @@ module plru_tree #(
 
   logic [WAYS-2:0] state [0:SETS-1];
 
+  // The way index is accumulated in an int, not in a $clog2(WAYS)-bit vector shifted left each
+  // level: the shifted form needs a part-select [$clog2(WAYS)-2:0], which is out of order (and a
+  // compile error) at WAYS=2, where LEVELS is 1.
   function automatic logic [$clog2(WAYS)-1:0] select_victim(input logic [WAYS-2:0] st);
     int node;
-    logic [$clog2(WAYS)-1:0] way;
+    int way;
     node = 0;
-    way  = '0;
+    way  = 0;
     for (int lvl = 0; lvl < LEVELS; lvl++) begin
-      way = {way[$clog2(WAYS)-2:0], st[node]};
+      way = (way * 2) + (st[node] ? 1 : 0);
       if (st[node] == 1'b0) node = 2*node + 1;
       else                  node = 2*node + 2;
     end
-    select_victim = way;
+    select_victim = way[$clog2(WAYS)-1:0];
   endfunction
 
   function automatic logic [WAYS-2:0] next_state(input logic [WAYS-2:0] st, input logic [$clog2(WAYS)-1:0] way);

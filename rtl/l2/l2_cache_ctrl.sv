@@ -1,7 +1,12 @@
 module l2_cache_ctrl #(
   parameter int CAPACITY_B = mlc_pkg::L2_CAPACITY_B,
   parameter int LINE_B     = mlc_pkg::L2_LINE_B,
-  parameter int WAYS       = mlc_pkg::L2_WAYS
+  parameter int WAYS       = mlc_pkg::L2_WAYS,
+  // Width in bytes of one upstream write (req_wdata / req_wstrb). L2 takes word-sized
+  // write-through forwards from L1 (the default). L3 is instantiated with WR_BYTES = L2_LINE_B so
+  // that one L2 write-back arrives as ONE posted write that updates a single half of the L3 line
+  // (FR-20), instead of being split into several word writes.
+  parameter int WR_BYTES   = mlc_pkg::BYTES_PER_WORD
 ) (
   input  logic                              clk,
   input  logic                              rst_n,
@@ -10,8 +15,8 @@ module l2_cache_ctrl #(
   output logic                              req_ready,
   input  logic [mlc_pkg::ADDR_W-1:0]         req_addr,
   input  logic                              req_we,
-  input  logic [mlc_pkg::DATA_W-1:0]         req_wdata,
-  input  logic [mlc_pkg::BYTES_PER_WORD-1:0] req_wstrb,
+  input  logic [WR_BYTES*8-1:0]              req_wdata,
+  input  logic [WR_BYTES-1:0]                req_wstrb,
   output logic                              resp_valid,
   input  logic                              resp_ready,
   output logic [LINE_B*8-1:0]                resp_line,
@@ -28,15 +33,39 @@ module l2_cache_ctrl #(
   input  logic [LINE_B*8-1:0]                dn_resp_line
 );
 
-  localparam int LINE_W         = LINE_B * 8;
-  localparam int WORDS_PER_LINE = LINE_B / mlc_pkg::BYTES_PER_WORD;
-  localparam int LINES          = CAPACITY_B / LINE_B;
-  localparam int SETS           = LINES / WAYS;
-  localparam int OFFSET_W       = $clog2(LINE_B);
-  localparam int INDEX_W        = $clog2(SETS);
-  localparam int TAG_W          = mlc_pkg::ADDR_W - INDEX_W - OFFSET_W;
-  localparam int WORD_SEL_W     = $clog2(WORDS_PER_LINE);
-  localparam int WAY_SEL_W      = $clog2(WAYS);
+  localparam int LINE_W      = LINE_B * 8;
+  localparam int WR_W        = WR_BYTES * 8;
+  localparam int SLOTS       = LINE_B / WR_BYTES;
+  localparam int LINES       = CAPACITY_B / LINE_B;
+  localparam int SETS        = LINES / WAYS;
+  localparam int OFFSET_W    = $clog2(LINE_B);
+  localparam int INDEX_W     = $clog2(SETS);
+  localparam int TAG_W       = mlc_pkg::ADDR_W - INDEX_W - OFFSET_W;
+  localparam int WR_OFFSET_W = $clog2(WR_BYTES);
+  localparam int SLOT_SEL_W  = $clog2(SLOTS);
+  localparam int WAY_SEL_W   = $clog2(WAYS);
+
+  // Elaboration-time consistency checks (NR-05). Written as an initial block so a bad parameter
+  // set stops Icarus at time 0 and Yosys at elaboration alike: Icarus 12 ignores $fatal in a
+  // generate block, Yosys 0.33 honours either form.
+  function automatic bit is_pow2(input int x);
+    is_pow2 = (x > 0) && ((x & (x - 1)) == 0);
+  endfunction
+
+  initial begin
+    if (!is_pow2(LINE_B) || !is_pow2(WAYS) || !is_pow2(WR_BYTES))
+      $fatal(1, "l2_cache_ctrl: LINE_B (%0d), WAYS (%0d) and WR_BYTES (%0d) must be powers of two",
+             LINE_B, WAYS, WR_BYTES);
+    if (WAYS < 2)
+      $fatal(1, "l2_cache_ctrl: WAYS (%0d) must be at least 2", WAYS);
+    if (CAPACITY_B % (LINE_B * WAYS) != 0)
+      $fatal(1, "l2_cache_ctrl: CAPACITY_B (%0d) must be a multiple of LINE_B*WAYS (%0d)",
+             CAPACITY_B, LINE_B * WAYS);
+    if (!is_pow2(SETS))
+      $fatal(1, "l2_cache_ctrl: sets (%0d) must be a power of two", SETS);
+    if (SLOTS < 2)
+      $fatal(1, "l2_cache_ctrl: WR_BYTES (%0d) must be at most half of LINE_B (%0d)", WR_BYTES, LINE_B);
+  end
 
   typedef enum logic [2:0] {S_IDLE, S_TAG_CHECK, S_EVICT_WRITEBACK, S_ALLOC_FILL, S_UPDATE_TAG} state_e;
   state_e state;
@@ -51,12 +80,12 @@ module l2_cache_ctrl #(
   // Reset-bearing (D-019): only valid_array must reach a defined value on reset (FR-06).
   logic valid_array [0:SETS-1][0:WAYS-1];
 
-  logic [TAG_W-1:0]   req_tag;
-  logic [INDEX_W-1:0] req_index;
-  logic [WORD_SEL_W-1:0] req_word_sel;
-  assign req_tag      = req_addr[mlc_pkg::ADDR_W-1 -: TAG_W];
-  assign req_index    = req_addr[OFFSET_W +: INDEX_W];
-  assign req_word_sel = req_addr[$clog2(mlc_pkg::BYTES_PER_WORD) +: WORD_SEL_W];
+  logic [TAG_W-1:0]      req_tag;
+  logic [INDEX_W-1:0]    req_index;
+  logic [SLOT_SEL_W-1:0] req_slot;
+  assign req_tag   = req_addr[mlc_pkg::ADDR_W-1 -: TAG_W];
+  assign req_index = req_addr[OFFSET_W +: INDEX_W];
+  assign req_slot  = req_addr[WR_OFFSET_W +: SLOT_SEL_W];
 
   logic [WAYS-1:0]    way_hit;
   logic [WAY_SEL_W-1:0] hit_way;
@@ -67,23 +96,30 @@ module l2_cache_ctrl #(
     end
   end
   assign is_hit = |way_hit;
-  always_comb begin
-    hit_way = '0;
+
+  // Index of the hitting way. A function rather than an always_comb loop: a constant part-select
+  // of the loop variable inside always_comb makes Icarus 12 print a "constant selects in always_*
+  // processes are not currently supported" advisory on every build.
+  function automatic logic [WAY_SEL_W-1:0] encode_way(input logic [WAYS-1:0] onehot);
+    int idx;
+    idx = 0;
     for (int w = 0; w < WAYS; w++) begin
-      if (way_hit[w]) hit_way = w[WAY_SEL_W-1:0];
+      if (onehot[w]) idx = w;
     end
-  end
+    encode_way = idx[WAY_SEL_W-1:0];
+  endfunction
+  assign hit_way = encode_way(way_hit);
 
   logic [LINE_W-1:0] hit_line_rd;
   assign hit_line_rd = data_array[req_index][hit_way];
 
-  function automatic logic [mlc_pkg::DATA_W-1:0] merge_wstrb(
-    input logic [mlc_pkg::DATA_W-1:0]        old_word,
-    input logic [mlc_pkg::DATA_W-1:0]        new_data,
-    input logic [mlc_pkg::BYTES_PER_WORD-1:0] wstrb
+  function automatic logic [WR_W-1:0] merge_wstrb(
+    input logic [WR_W-1:0]    old_word,
+    input logic [WR_W-1:0]    new_data,
+    input logic [WR_BYTES-1:0] wstrb
   );
     merge_wstrb = old_word;
-    for (int b = 0; b < mlc_pkg::BYTES_PER_WORD; b++) begin
+    for (int b = 0; b < WR_BYTES; b++) begin
       if (wstrb[b]) merge_wstrb[b*8 +: 8] = new_data[b*8 +: 8];
     end
   endfunction
@@ -91,22 +127,23 @@ module l2_cache_ctrl #(
   logic [LINE_W-1:0] hit_write_line_merged;
   always_comb begin
     hit_write_line_merged = hit_line_rd;
-    hit_write_line_merged[req_word_sel*mlc_pkg::DATA_W +: mlc_pkg::DATA_W] =
-        merge_wstrb(hit_line_rd[req_word_sel*mlc_pkg::DATA_W +: mlc_pkg::DATA_W], req_wdata, req_wstrb);
+    hit_write_line_merged[req_slot*WR_W +: WR_W] =
+        merge_wstrb(hit_line_rd[req_slot*WR_W +: WR_W], req_wdata, req_wstrb);
   end
 
   // --- miss latches ---
-  logic [mlc_pkg::ADDR_W-1:0]         miss_addr;
-  logic [INDEX_W-1:0]                 miss_index;
-  logic [TAG_W-1:0]                   miss_tag;
-  logic [WORD_SEL_W-1:0]              miss_word_sel;
-  logic                               miss_is_write;
-  logic [mlc_pkg::DATA_W-1:0]         miss_wdata;
-  logic [mlc_pkg::BYTES_PER_WORD-1:0] miss_wstrb;
+  logic [mlc_pkg::ADDR_W-1:0] miss_addr;     // line-aligned: the offset bits are cleared when latched
+  logic [INDEX_W-1:0]         miss_index;
+  logic [TAG_W-1:0]           miss_tag;
+  logic [SLOT_SEL_W-1:0]      miss_slot;
+  logic                       miss_is_write;
+  logic [WR_W-1:0]            miss_wdata;
+  logic [WR_BYTES-1:0]        miss_wstrb;
 
   // --- victim register (D-018: one register, never a per-level buffer - eviction always
   // completes before the fill it triggered begins) ---
-  logic [WAY_SEL_W-1:0] victim_way;      // combinational, from plru_tree, valid while in S_TAG_CHECK
+  logic [WAY_SEL_W-1:0] plru_victim;     // the PLRU tree's choice
+  logic [WAY_SEL_W-1:0] victim_way;      // combinational, valid while in S_TAG_CHECK
   logic [WAY_SEL_W-1:0] victim_way_latched;
   logic [TAG_W-1:0]     victim_tag_latched;
   logic [LINE_W-1:0]    victim_line_latched;
@@ -116,7 +153,7 @@ module l2_cache_ctrl #(
   logic [INDEX_W-1:0]   plru_access_set;
   logic [WAY_SEL_W-1:0] plru_access_way;
 
-  // victim_way (the plru_tree's combinational output) is only ever consumed once, in
+  // victim_way (built from the plru_tree's combinational output) is only ever consumed once, in
   // commit_tag_check's latch below - and by the time the FSM is actually in S_TAG_CHECK,
   // miss_index is already correctly latched (set on the same edge as the S_IDLE->S_TAG_CHECK
   // transition). So set_index can simply always be miss_index: its value is don't-care in every
@@ -125,18 +162,35 @@ module l2_cache_ctrl #(
     .clk          (clk),
     .rst_n        (rst_n),
     .set_index    (miss_index),
-    .victim_way   (victim_way),
+    .victim_way   (plru_victim),
     .access_valid (plru_access_valid),
     .access_set   (plru_access_set),
     .access_way   (plru_access_way)
   );
 
+  // Victim choice: a free (invalid) way is used before any live line is evicted; only a full set
+  // asks the PLRU tree. Without this, hits can steer the tree at a live way while an invalid way
+  // is still free.
+  function automatic logic [WAY_SEL_W-1:0] lowest_set(input logic [WAYS-1:0] v);
+    int idx;
+    idx = 0;
+    for (int w = WAYS - 1; w >= 0; w--) begin
+      if (v[w]) idx = w;
+    end
+    lowest_set = idx[WAY_SEL_W-1:0];
+  endfunction
+  logic [WAYS-1:0] set_valid;
+  always_comb begin
+    for (int w = 0; w < WAYS; w++) set_valid[w] = valid_array[miss_index][w];
+  end
+  assign victim_way = (&set_valid) ? plru_victim : lowest_set(~set_valid);
+
   logic [LINE_W-1:0] fill_line_merged;
   always_comb begin
     fill_line_merged = dn_resp_line;
     if (miss_is_write) begin
-      fill_line_merged[miss_word_sel*mlc_pkg::DATA_W +: mlc_pkg::DATA_W] =
-          merge_wstrb(dn_resp_line[miss_word_sel*mlc_pkg::DATA_W +: mlc_pkg::DATA_W], miss_wdata, miss_wstrb);
+      fill_line_merged[miss_slot*WR_W +: WR_W] =
+          merge_wstrb(dn_resp_line[miss_slot*WR_W +: WR_W], miss_wdata, miss_wstrb);
     end
   end
 
@@ -220,10 +274,10 @@ module l2_cache_ctrl #(
       case (state)
         S_IDLE: begin
           if (req_valid && req_ready && !is_hit) begin
-            miss_addr     <= req_addr;
+            miss_addr     <= {req_addr[mlc_pkg::ADDR_W-1:OFFSET_W], {OFFSET_W{1'b0}}};
             miss_index    <= req_index;
             miss_tag      <= req_tag;
-            miss_word_sel <= req_word_sel;
+            miss_slot     <= req_slot;
             miss_is_write <= req_we;
             miss_wdata    <= req_wdata;
             miss_wstrb    <= req_wstrb;
