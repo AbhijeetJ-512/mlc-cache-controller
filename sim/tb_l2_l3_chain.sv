@@ -22,8 +22,7 @@ module tb_l2_l3_chain;
 
   // L2 downstream <-> adapter <-> L3 upstream
   wire                   l2_dn_req_valid, l2_dn_req_ready, l2_dn_req_we, l2_dn_resp_valid, l2_dn_resp_ready;
-  wire  [31:0]           l2_dn_req_addr, l2_dn_req_wdata;
-  wire  [3:0]            l2_dn_req_wstrb;
+  wire  [31:0]           l2_dn_req_addr;
   wire  [255:0]          l2_dn_req_line, l2_dn_resp_line;
   wire                   l3_req_valid, l3_req_ready, l3_req_we, l3_resp_valid, l3_resp_ready;
   wire  [31:0]           l3_req_addr;
@@ -33,8 +32,7 @@ module tb_l2_l3_chain;
 
   // L3 downstream <-> engine <-> AXI
   wire                   dn_req_valid, dn_req_ready, dn_req_we, dn_resp_valid, dn_resp_ready;
-  wire  [31:0]           dn_req_addr, dn_req_wdata;
-  wire  [3:0]            dn_req_wstrb;
+  wire  [31:0]           dn_req_addr;
   wire  [511:0]          dn_req_line, dn_resp_line;
   wire [31:0] awaddr, araddr;
   wire [7:0]  awlen, arlen;
@@ -54,7 +52,7 @@ module tb_l2_l3_chain;
     .req_valid, .req_ready, .req_addr, .req_we, .req_wdata, .req_wstrb,
     .resp_valid, .resp_ready, .resp_line,
     .dn_req_valid(l2_dn_req_valid), .dn_req_ready(l2_dn_req_ready), .dn_req_addr(l2_dn_req_addr),
-    .dn_req_we(l2_dn_req_we), .dn_req_wdata(l2_dn_req_wdata), .dn_req_wstrb(l2_dn_req_wstrb),
+    .dn_req_we(l2_dn_req_we),
     .dn_req_line(l2_dn_req_line), .dn_resp_valid(l2_dn_resp_valid), .dn_resp_ready(l2_dn_resp_ready),
     .dn_resp_line(l2_dn_resp_line)
   );
@@ -72,7 +70,7 @@ module tb_l2_l3_chain;
     .req_valid(l3_req_valid), .req_ready(l3_req_ready), .req_addr(l3_req_addr), .req_we(l3_req_we),
     .req_wdata(l3_req_wdata), .req_wstrb(l3_req_wstrb),
     .resp_valid(l3_resp_valid), .resp_ready(l3_resp_ready), .resp_line(l3_resp_line),
-    .dn_req_valid, .dn_req_ready, .dn_req_addr, .dn_req_we, .dn_req_wdata, .dn_req_wstrb, .dn_req_line,
+    .dn_req_valid, .dn_req_ready, .dn_req_addr, .dn_req_we, .dn_req_line,
     .dn_resp_valid, .dn_resp_ready, .dn_resp_line
   );
 

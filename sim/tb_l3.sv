@@ -26,8 +26,6 @@ module tb_l3;
   // L3 downstream port <-> fill engine
   wire                   dn_req_valid, dn_req_ready, dn_req_we, dn_resp_valid, dn_resp_ready;
   wire  [31:0]           dn_req_addr;
-  wire  [31:0]           dn_req_wdata;
-  wire  [3:0]            dn_req_wstrb;
   wire  [LINE_W-1:0]     dn_req_line, dn_resp_line;
 
   // AXI4

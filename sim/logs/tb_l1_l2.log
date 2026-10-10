@@ -10,4 +10,4 @@ PASS: two back-to-back writes forwarded to L2 misses: L1 accepts the next reques
 PASS: the first write-allocated word is in L2
 PASS: the second write-allocated word is in L2
 ** ALL TESTS PASSED **
-sim/tb_l1_l2.sv:171: $finish called at 1165000 (1ps)
+sim/tb_l1_l2.sv:169: $finish called at 1165000 (1ps)

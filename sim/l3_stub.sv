@@ -10,8 +10,6 @@ module l3_stub #(
   output logic                                  req_ready,
   input  logic [mlc_pkg::ADDR_W-1:0]             req_addr,
   input  logic                                  req_we,
-  input  logic [mlc_pkg::DATA_W-1:0]             req_wdata,
-  input  logic [mlc_pkg::BYTES_PER_WORD-1:0]     req_wstrb,
   input  logic [LINE_B*8-1:0]                    req_line,
 
   output logic                                  resp_valid,

@@ -119,4 +119,4 @@ PASS: req_ready is high again after reset mid-fill
 PASS: every downstream request address, fill or write-back, is line-aligned (FR-24, D-025)
 PASS: no write (hit or write-allocate miss) raised resp_valid anywhere in the run (D-021, posted writes)
 ** ALL TESTS PASSED **
-sim/tb_l2.sv:760: $finish called at 7646000 (1ps)
+sim/tb_l2.sv:758: $finish called at 7646000 (1ps)
