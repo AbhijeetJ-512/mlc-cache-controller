@@ -120,7 +120,7 @@ sim:
 	  if out=$$($(MAKE) --no-print-directory test-$$t 2>&1); then \
 	    ok=$$((ok+1)); n=$$(echo "$$out" | sed -n 's/.*(\([0-9][0-9]*\) checks).*/\1/p' | head -1); checks=$$((checks+$${n:-0})); \
 	  else bad=$$((bad+1)); fi; \
-	  echo "$$out"; \
+	  printf '%s\n' "$$out"; \
 	done; \
 	echo "sim: $$ok of $(words $(TESTS)) testbenches passed, $$bad failed ($$checks checks passed in total)"; \
 	[ $$bad -eq 0 ]

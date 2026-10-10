@@ -1326,7 +1326,8 @@ two accesses, only ever name even ways.
   and clear all at once; the write-back data, the fill way and the valid bit taken or set a cycle early (c15, c16, c18),
   because misses are blocking (D-004) and nothing can touch the set during one; and the adapter's half select gated by
   write enable (a01), because a posted write never uses the response half. A seventh, "a read ends on `RLAST`" (e07),
-  was equivalent against a compliant slave and is now caught by the new early-`RLAST` test.
+  is equivalent against a compliant slave; it is caught only by the new missing-`RLAST` test, where it waits for an
+  `RLAST` that never comes, and not by the early-`RLAST` one.
 - *Harness.* `make sim` totals only this run's checks (it had printed 442 with four testbenches failing to compile,
   from stale logs); a log line starting `ERROR` (from `$error`), `FATAL` or `AXI PROTO` now fails a test; `make elab`
   names, per bad case, the words its guard prints, so under Icarus a case cannot pass by tripping a neighbouring guard;
@@ -1346,18 +1347,26 @@ samples early or late fails loudly in simulation; the chain test waits one time 
 the same reason. `axi_mem_model` gained three plain variables (`b_delay`, `rlast_mode`, `rresp_err_beat`) set by
 hierarchical reference, not ports, so the testbenches that connect it with `.*` did not have to change.
 
-**Result.** Added checks: `tb_plru_ways` 82 to 97 (every way reachable as the victim at 8 ways, derived from the
+**Result.** Added checks: `tb_plru_ways` 82 to 98 (every way reachable as the victim at 8 ways, derived from the
 definition; per-set trees with different set numbers on the two ports), `tb_l2` 112 to 120 (PLRU per set: a hit after a
 miss elsewhere, fills in one set not moving another's victim, a write hit counting as an access; partial strobes that
 keep byte 0 for a hit and for a write-allocate), `tb_l3` 37 to 47 (a hit on every way of an 8-way set, a write hit
 on way 6, a strobe whose halves differ and that is not a palindrome), `tb_axi4_fill_engine` 29 to 45 (a held-off write
 response, SLVERR on a write, DECERR on a read, a good write not clearing `mem_err`, an error on the first, a middle and
-the last beat alone, a missing and an early `RLAST`), `tb_l2_l3_chain` 14 to 16 (a lower-half re-read that really
-reaches L3, and the re-read after the L3 reset served without an AXI read). 493 checks in 11 testbenches. Re-running the
-review's mutants on the fixed tree: all 22 survivors are caught, the six equivalents
-survive, the author's earlier mutants, the three D-030 boundary mutants and the five guard deletions are caught again.
+the last beat alone, a missing and an early `RLAST`), `tb_l2_l3_chain` 14 to 19 (every re-read that is meant to be served by L3 is shown to be an L2 miss, and the re-read
+after the L3 reset is served without an AXI read). 497 checks in 11 testbenches. Re-running the
+review's mutants on the fixed tree: all 22 survivors are caught (one of them, c27, crashes Icarus as written; the same fault in a form that compiles is
+caught by the new hits on ways 4 to 7), the six equivalents survive, the author's earlier mutants, the three D-030 boundary mutants and the five guard deletions are caught again.
 Stale comments in `tb_l2` that still described the pre-D-029 fill order were corrected, as were D-027, D-029 and the
 interface document's header.
+
+The same reviewer then re-checked the fix wave. It agreed with both rulings, confirmed the harness changes by breaking
+each on purpose, and found one weakness in the new tests: three of the five new per-set checks in `tb_plru_ways`
+touched a way whose victim equals an untouched set's (way 0), and read a set without waiting for the new selection to
+settle, so a tree that overwrote set 0 on every access passed. They now touch ways whose victim differs, wait, and
+that mutant is caught. It also asked for the chain test's re-reads that must reach L3 to be shown to be L2 misses, for
+`make sim` to print captured output with `printf` rather than `echo` (dash's `echo` interprets backslashes), and for
+the credit for e07 to name the missing-`RLAST` test; all three were done.
 
 ---
 

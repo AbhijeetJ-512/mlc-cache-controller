@@ -92,8 +92,9 @@ PASS: per-set: the accessed set's victim follows the access
 PASS: per-set: set 0 is untouched by an access to set 2
 PASS: per-set: set 1 is untouched by an access to set 2
 PASS: per-set: set 3 is untouched by an access to set 2
-PASS: per-set: the set being read does not follow an access to another set
+PASS: per-set: the set being read does not follow accesses to another set
 PASS: per-set: set 3 holds its own tree
-PASS: per-set: set 2 kept its tree through the access to set 3
+PASS: per-set: set 2 kept its tree through the accesses to set 3
+PASS: per-set: set 0 was never touched
 ** ALL TESTS PASSED **
-sim/tb_plru_ways.sv:174: $finish called at 4478000 (1ps)
+sim/tb_plru_ways.sv:180: $finish called at 4489000 (1ps)

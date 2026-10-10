@@ -132,7 +132,7 @@ module tb_l2_l3_chain;
   endtask
 
   logic [255:0] got, exp_line;
-  int ar0, aw0;
+  int ar0, aw0, fc0;
 
   // Reads L2 sends to L3 (fills). A read that is meant to be served by L3 must show up here.
   int l2_fill_count = 0;
@@ -160,8 +160,9 @@ module tb_l2_l3_chain;
     cpu_write_hit(32'h0000_0044, 32'hDEAD_BEEF);                  // dirties word 1 of L2 line 0x40
     for (int t = 1; t <= 4; t++)                                  // four more tags in L2 set 2: its 4 ways cycle, line 0x40 is evicted
       cpu_read(32'h0000_0040 + t * 32'h2000, got);
-    ar0 = axi.ar_count; aw0 = axi.aw_count;
+    ar0 = axi.ar_count; aw0 = axi.aw_count; fc0 = l2_fill_count;
     cpu_read(32'h0000_0040, got);                                 // L2 miss, L3 hit on the half the write-back updated
+    check(l2_fill_count == fc0 + 1, "the re-read is an L2 miss, so it really goes to L3");
     exp_line = image32(32'h0000_0040);
     exp_line[32 +: 32] = 32'hDEAD_BEEF;
     check(got === exp_line, "the L2 write-back updated the right half of L3's line");
@@ -175,8 +176,9 @@ module tb_l2_l3_chain;
     @(posedge clk);
     for (int t = 5; t <= 8; t++)                                  // four tags not used before: fills cycle through all 4 ways,
       cpu_read(32'h0000_0040 + t * 32'h2000, got);                // so line 0x40 is evicted from L2 and its write-back misses in L3
-    ar0 = axi.ar_count;
+    ar0 = axi.ar_count; fc0 = l2_fill_count;
     cpu_read(32'h0000_0040, got);                                 // fetched back through L3
+    check(l2_fill_count == fc0 + 1, "the re-read is an L2 miss, so it really goes to L3");
     exp_line = image32(32'h0000_0040);
     exp_line[32 +: 32] = 32'hCAFE_F00D;
     check(got === exp_line, "a write-back that misses in L3 is write-allocated and reads back correctly");
@@ -187,7 +189,9 @@ module tb_l2_l3_chain;
     cpu_write_hit(32'h0000_0064, 32'hBEEF_0001);                  // dirties word 1 of the upper half
     for (int t = 9; t <= 12; t++)                                 // four fresh tags in L2 set 3 evict line 0x60
       cpu_read(32'h0000_0060 + t * 32'h2000, got);
+    fc0 = l2_fill_count;
     cpu_read(32'h0000_0060, got);
+    check(l2_fill_count == fc0 + 1, "the upper-half re-read is an L2 miss, so it really goes to L3");
     exp_line = image32(32'h0000_0060);
     exp_line[32 +: 32] = 32'hBEEF_0001;
     check(got === exp_line, "an upper-half L2 write-back updates the upper half of L3's line");

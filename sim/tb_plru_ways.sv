@@ -153,20 +153,26 @@ module tb_plru_ways;
     end
 
     // ---- 8 ways: each set keeps its own tree, and an access updates the set it names ----
+    // The accesses use ways in the left half (0..3): from the reset state their victim is not way 0,
+    // so they cannot be mistaken for an untouched set. Each read of a set follows a #1 so the
+    // combinational victim has settled on the newly selected set.
     do_reset();
-    aset8 = 2'd2; touch8(5);                      // set 2 only
-    sel8 = 2'd2;
-    check(v8 === exp8_len1[5][2:0], "per-set: the accessed set's victim follows the access");
+    aset8 = 2'd2; touch8(1);                      // set 2 only: victim moves to way 4
+    sel8 = 2'd2; #1;
+    check(v8 === exp8_len1[1][2:0], "per-set: the accessed set's victim follows the access");
     for (int s = 0; s < 4; s++) begin
       sel8 = s[1:0]; #1;
       if (s != 2) check(v8 === 3'd0, $sformatf("per-set: set %0d is untouched by an access to set 2", s));
     end
-    aset8 = 2'd3; sel8 = 2'd1; touch8(2);         // set 3 is updated while set 1 is being read
-    check(v8 === 3'd0, "per-set: the set being read does not follow an access to another set");
+    aset8 = 2'd3; sel8 = 2'd1;                    // set 3 is updated while set 1 is being read
+    touch8(1); touch8(4);
+    check(v8 === 3'd0, "per-set: the set being read does not follow accesses to another set");
     sel8 = 2'd3; #1;
-    check(v8 === exp8_len1[2][2:0], "per-set: set 3 holds its own tree");
+    check(v8 === exp8_len2[1*8 + 4][2:0], "per-set: set 3 holds its own tree");
     sel8 = 2'd2; #1;
-    check(v8 === exp8_len1[5][2:0], "per-set: set 2 kept its tree through the access to set 3");
+    check(v8 === exp8_len1[1][2:0], "per-set: set 2 kept its tree through the accesses to set 3");
+    sel8 = 2'd0; #1;
+    check(v8 === 3'd0, "per-set: set 0 was never touched");
     aset8 = 2'd0; sel8 = 2'd0;
 
     if (errors == 0) begin

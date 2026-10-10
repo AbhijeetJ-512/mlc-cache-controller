@@ -9,7 +9,7 @@ memory-side interface. Synthesis, STA, and place-and-route all target **Sky130HD
 > **Project status: Phase 3 of 12 — everything below the CPU is built and Tier-1-verified: the L1
 > controllers (I$ and D$), the shared L2/L3 write-back controller, the tree-PLRU module, the L2 to L3
 > line-size adapter and the AXI4 fill engine.** `make check` runs the parameter guards, 11 Tier-1
-> testbenches (493 checks, logs checked in under `sim/logs/`) and the Yosys elaboration check (zero
+> testbenches (497 checks, logs checked in under `sim/logs/`) and the Yosys elaboration check (zero
 > latches or tristates; the L2 and L3 arrays inferred as memories), all passing, in about two minutes. The
 > integrated `mlc_cache_top` is not written yet. Synthesis, timing, area and P&R figures are
 > **NOT YET MEASURED**; the UVM tier is **NOT YET RUN (external simulator required)**.
