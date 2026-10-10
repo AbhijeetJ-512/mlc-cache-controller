@@ -233,11 +233,21 @@ tree, each verified in isolation. Explicitly **not** in scope here: the integrat
 | SR-01 | M | The RTL shall be synthesizable by Yosys 0.33 with zero errors. |
 | SR-02 | M | Synthesis shall produce zero inferred latches and zero inferred tri-states. |
 | SR-03 | M | Synthesis shall produce no warnings about width mismatch, incomplete sensitivity, or multiply-driven nets. |
-| SR-04 | M | The technology target shall be **Sky130HD** (`sky130hd_tt.lib`, present at `/home/abhi/Documents/VLSI/OpenROAD/test/sky130hd/` on this machine), as explicitly requested for this project. |
+| SR-04 | M | The technology target shall be **Sky130HD** (`sky130hd_tt.lib`, present at `/home/abhi/Documents/VLSI/OpenROAD/test/sky130hd/` on this machine), as explicitly requested for this project. A byte-identical copy is vendored at `sky130hd/sky130hd_tt.lib` (SHA-256 in `sky130hd/README.md`) and the flow reads only that copy. |
 | SR-05 | M | No vendor primitives, no `(* ... *)` vendor attributes, no black boxes in the RTL. Technology mapping is the tool's job. |
 | SR-06 | M | The design shall contain no clock gating, no latches, and no combinational feedback loops. |
 | SR-07 | M | Synthesis shall be reproducible: a single script, checked in, with the library path as the only external dependency. |
-| SR-08 | S | Synthesis shall be run at each point of the capacity/associativity sweep defined in `00_project_plan.md` Phase 9, to make the direct-mapped-vs-set-associative and true-LRU-vs-PLRU area tradeoffs measurable rather than asserted. |
+| SR-08 | S | Synthesis shall be run at each point of the capacity/associativity sweep (the points are the table in `scripts/synth_run.py`, D-038; the plan's PPA sweep is Phase 10), to make the direct-mapped-vs-set-associative and true-LRU-vs-PLRU area tradeoffs measurable rather than asserted. |
+
+**Status after Phase 7** (every figure is in `build/reports/summary.md`; D-037 to D-039).
+- SR-01, SR-02, SR-03, SR-05, SR-06: **met for every unit at every synthesis point that completed.** `scripts/synth.tcl` stops with an error
+  on a latch, a tri-state, an undriven or multiply-driven net, a combinational loop or a cell that is not a library cell, and
+  `scripts/synth_run.py` fails a run on any log warning outside a five-entry whitelist; `make synth-selftest` shows each of these checks
+  rejecting a module built to break it. SR-05 is read as "no vendor primitive in the RTL": the synthesized netlist is of course made of library cells.
+- SR-04, SR-07: met (`sky130hd/`, one script `scripts/synth.tcl`; its inputs come from the environment, so a driver sets them).
+- SR-08: run at 11 sweep points plus the default configuration. **The default L3 (256 KiB, 8-way) did not complete: it ran out of memory
+  under a 12,000,000 KiB cap after 223 s (D-038), so its area is NOT MEASURED.** L3 is measured at 8, 16 and 32 KiB instead.
+- The integrated top `mlc_cache_top` is **not synthesized**; no whole-hierarchy area is claimed.
 
 ---
 
@@ -283,7 +293,9 @@ liberty file already used for synthesis/STA.
 | AR-03 | N | True-LRU vs tree-PLRU replacement-state area shall be compared at a fixed associativity (a small side-experiment reusing the PM-05/PM-08 parameters), since D-007 chose PLRU specifically to bound this cost and the claim should be checkable. |
 | PW-01 | N | Power shall be estimated with OpenSTA's `report_power` using switching-activity defaults, explicitly labelled as a static estimate, not a simulation-driven (SAIF/VCD) measurement. |
 
-**All area and power figures: NOT YET MEASURED.**
+**Area: measured per unit at each synthesis point (`build/reports/summary.md`, Yosys `stat -liberty`, flat flip-flop arrays, no memory macros;
+D-037, D-038). AR-02 (tag/valid/dirty versus data array area) and AR-03 (true LRU versus tree-PLRU) are NOT YET MEASURED: the units are
+flattened before mapping, so the arrays' share is not separable from the logic around them (Phase 10). Power: NOT YET MEASURED.**
 
 ---
 
@@ -314,7 +326,7 @@ liberty file already used for synthesis/STA.
 | ~~OQ-1~~ | ~~Should the L1<->L2 link reuse the same valid/ready shape as CPU<->L1, or carry extra fields?~~ **Resolved:** uniform shape (`04_interfaces.md` §2), plus a 1-entry write-forward skid register in L1 to reconcile PF-01's same-cycle response with L2 not always being ready — see D-015. | Design | **Resolved, D-015** |
 | ~~OQ-2~~ | ~~Is a single shared victim/write-buffer register enough at L2/L3?~~ **Resolved:** yes - a single victim register, since EVICT_WRITEBACK completes before ALLOC_FILL begins by construction (blocking misses, D-004) and write hits never forward downstream at all (FR-15, no L1-style skid-register problem here) - see D-018. | Design | **Resolved, D-018** |
 | OQ-3 | Should the AXI4 fill engine support outstanding-transaction pipelining (issuing the next AR before the previous R burst completes), or is one AXI4 transaction at a time sufficient given blocking misses already serialize at L3? | Design | Phase 3 |
-| OQ-4 | Will Yosys elaboration/synthesis runtime for the L3 configuration (8-way, 512 sets, widest tag/PLRU array) be tractable on this machine? | Impl | Phase 7 |
+| ~~OQ-4~~ | ~~Will Yosys elaboration/synthesis runtime for the L3 configuration (8-way, 512 sets, widest tag/PLRU array) be tractable on this machine?~~ **Resolved, no for the default L3:** it ran out of memory under a 12,000,000 KiB cap after 223 s, inside generic synthesis (D-038); L3 up to 32 KiB, L2 at its default 32 KiB and every other unit complete, the largest in 9.4 GiB and under 10 minutes. | Impl | **Resolved, D-038** |
 | OQ-5 | Which external simulator and UVM library version (IEEE 1800.2 / Accellera UVM 1.2, or a vendor-bundled UVM) will the UVM tier actually be run on? The environment will be written to the standard 1800.2 API and not to any single vendor's quirks, but the exact `make uvm SIMULATOR=` invocation needs a concrete target. | User | Phase 5 |
 | OQ-6 | Will OpenROAD P&R close (legal placement, DRC-clean routing) on the full-size hierarchy in reasonable runtime, or will it need to be attempted only at reduced sizing (per PD-03's staged approach)? | Impl | Phase 9 |
 
