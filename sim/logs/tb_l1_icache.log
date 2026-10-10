@@ -3,4 +3,4 @@ PASS: cold-miss instruction fetch returns fetched data
 PASS: repeated instruction fetch hits
 PASS: back-to-back instruction-fetch misses to different sets both resolve correctly
 ** ALL TESTS PASSED **
-sim/tb_l1_icache.sv:100: $finish called at 335000 (1ps)
+sim/tb_l1_icache.sv:101: $finish called at 335000 (1ps)

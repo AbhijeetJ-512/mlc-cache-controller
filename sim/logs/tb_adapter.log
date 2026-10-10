@@ -8,6 +8,10 @@ PASS: address 0x12345fbf (bit 5 set) gets the upper half
 PASS: address 0x12345f9f (bit 5 clear) gets the lower half
 PASS: upper half tracks a new L3 line
 PASS: lower half tracks a new L3 line
+PASS: upper half all 0, lower half the opposite: the upper half is passed
+PASS: upper half all 0, lower half the opposite: the lower half is passed
+PASS: upper half all 1, lower half the opposite: the upper half is passed
+PASS: upper half all 1, lower half the opposite: the lower half is passed
 PASS: handshake combination 0000 passes through unchanged
 PASS: handshake combination 0001 passes through unchanged
 PASS: handshake combination 0010 passes through unchanged
@@ -34,4 +38,4 @@ PASS: write-back to 0x12345fbf: data, address, WE and all-ones strobes pass thro
 PASS: write-back to 0x12345f9f: data, address, WE and all-ones strobes pass through
 PASS: a read request reaches L3 as a read
 ** ALL TESTS PASSED **
-sim/tb_adapter.sv:101: $finish called at 36000 (1ps)
+sim/tb_adapter.sv:114: $finish called at 40000 (1ps)

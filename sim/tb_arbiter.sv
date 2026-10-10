@@ -278,6 +278,26 @@ module tb_arbiter;
     check(l0 === line_of(ia(0, 5)) && l1 === line_of(da(0, 5)), "late resp_ready: both requesters still get their own lines");
     check(acc_addr[0] == ia(0, 5) && acc_addr[1] == da(0, 5), "late resp_ready: the other side was served after, not instead");
 
+    // ---- the same with the sides swapped: requester 1 owns the miss and takes its response late ----
+    // (added after a stuck-at campaign on the synthesised arbiter, D-038: only requester 0 had a late-resp_ready scenario)
+    reset_all();
+    clear_log();
+    fork
+      begin
+        q_valid[1] <= 1'b1; q_we[1] <= 1'b0; q_addr[1] <= da(0, 73); q_rdr[1] <= 1'b0; waiting[1] = 1'b1;
+        idle(MISS_LAT + 6);
+        check(m == M_RESP, "the miss response waits for its owner's resp_ready, the owner being requester 1");
+        q_rdr[1] <= 1'b1;
+        got_late = 1'b0;
+        while (!got_late) begin @(posedge clk); if (r_valid[1] && q_rdr[1]) begin l1 = l2_resp_line; got_late = 1'b1; end end
+        q_valid[1] <= 1'b0; q_rdr[1] <= 1'b0; waiting[1] = 1'b0;
+      end
+      begin idle(2); read_now(0, ia(0, 73), l0); end                 // asks, with resp_ready high, while 1 is outstanding
+    join
+    #1;
+    check(l0 === line_of(ia(0, 73)) && l1 === line_of(da(0, 73)), "requester 1 late resp_ready: both requesters still get their own lines");
+    check(acc_addr[0] == da(0, 73) && acc_addr[1] == ia(0, 73), "requester 1 late resp_ready: the other side was served after, not instead");
+
     // ---- a posted write is accepted by req_ready alone, and a write behind a read waits ----
     reset_all();
     clear_log();
@@ -311,6 +331,25 @@ module tb_arbiter;
           acc_addr[1] == da(1, 70) && acc_data[1] == 32'h2222_0002 && acc_strb[1] == 4'hC,
           "two writes in the same cycle: each reaches L2 with its own address, data and strobes, requester 0 first");
     idle(2);
+
+    // ---- every bit of the address, write data and strobes can be 1 and can be 0 on the way through, from either side ----
+    // (added after a stuck-at campaign on the synthesised arbiter, D-038: the muxes are bit-wide and the scenarios above only
+    // ever show them a few patterns, so a bit stuck at 0 in most of them went unseen)
+    reset_all();
+    clear_log();
+    write_now(0, 32'hFFFF_FFFF, 32'hFFFF_FFFF, 4'hF); idle(2);
+    write_now(0, 32'h0000_0000, 32'h0000_0000, 4'h0); idle(2);
+    write_now(1, 32'hFFFF_FFFF, 32'hFFFF_FFFF, 4'hF); idle(2);
+    write_now(1, 32'h0000_0000, 32'h0000_0000, 4'h0); idle(2);
+    #1;
+    check(acc_addr.size() == 4 && acc_we[0] && acc_we[1] && acc_we[2] && acc_we[3], "four writes with every field all ones or all zeros were all accepted");
+    check(acc_addr[0] === 32'hFFFF_FFFF && acc_data[0] === 32'hFFFF_FFFF && acc_strb[0] === 4'hF,
+          "requester 0: address, data and strobes with every bit 1 reach L2 unchanged");
+    check(acc_addr[1] === 32'h0000_0000 && acc_data[1] === 32'h0000_0000 && acc_strb[1] === 4'h0,
+          "requester 0: address, data and strobes with every bit 0 reach L2 unchanged");
+    check(acc_addr[2] === 32'hFFFF_FFFF && acc_data[2] === 32'hFFFF_FFFF && acc_strb[2] === 4'hF &&
+          acc_addr[3] === 32'h0000_0000 && acc_data[3] === 32'h0000_0000 && acc_strb[3] === 4'h0,
+          "requester 1: address, data and strobes with every bit 1, then every bit 0, reach L2 unchanged");
 
     // ---- fairness: neither side can starve the other ----
     reset_all();

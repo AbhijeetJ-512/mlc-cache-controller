@@ -17,11 +17,18 @@ PASS: the second request is not accepted until the first read's response has bee
 PASS: the miss response waits for its owner's resp_ready
 PASS: late resp_ready: both requesters still get their own lines
 PASS: late resp_ready: the other side was served after, not instead
+PASS: the miss response waits for its owner's resp_ready, the owner being requester 1
+PASS: requester 1 late resp_ready: both requesters still get their own lines
+PASS: requester 1 late resp_ready: the other side was served after, not instead
 PASS: a write forwarded during a read miss does not disturb the read's response
 PASS: the write waited for the read's response, then reached L2 intact
 PASS: a read asked for while L2 is busy behind a write miss is served afterwards
 PASS: the read is accepted only after L2 finished the write, and the write arrived intact
 PASS: two writes in the same cycle: each reaches L2 with its own address, data and strobes, requester 0 first
+PASS: four writes with every field all ones or all zeros were all accepted
+PASS: requester 0: address, data and strobes with every bit 1 reach L2 unchanged
+PASS: requester 0: address, data and strobes with every bit 0 reach L2 unchanged
+PASS: requester 1: address, data and strobes with every bit 1, then every bit 0, reach L2 unchanged
 PASS: two streams of four read misses: all eight were served
 PASS: two continuously asking requesters alternate, starting with requester 0
 PASS: against a continuous write stream all four reads were served
@@ -37,4 +44,4 @@ PASS: a response was never given to a requester that was not waiting, or dropped
 PASS: both requesters were never told their request was accepted in the same cycle
 PASS: L2 was never shown a request while one of its reads was outstanding
 ** ALL TESTS PASSED **
-sim/tb_arbiter.sv:425: $finish called at 3325000 (1ps)
+sim/tb_arbiter.sv:464: $finish called at 3695000 (1ps)

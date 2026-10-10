@@ -70,6 +70,19 @@ module tb_adapter;
     l2_req_addr = 32'h0000_0000; #1;
     check(l2_resp_line === pat(8'h21), "lower half tracks a new L3 line");
 
+    // ---- every bit of each half can be 1 and can be 0 while the other half is the opposite, under either select ----
+    // (added after a stuck-at campaign on the synthesised adapter, D-038: pat() gives each bit one value per test, which
+    // cannot show a fault inside the 256 two-way multiplexers)
+    for (int u = 0; u < 2; u++) begin
+      l3_resp_line = u ? {{L2_W{1'b1}}, {L2_W{1'b0}}} : {{L2_W{1'b0}}, {L2_W{1'b1}}};
+      l2_req_addr = 32'h0000_0020; #1;
+      check(l2_resp_line === (u ? {L2_W{1'b1}} : {L2_W{1'b0}}),
+            $sformatf("upper half all %0d, lower half the opposite: the upper half is passed", u));
+      l2_req_addr = 32'h0000_0000; #1;
+      check(l2_resp_line === (u ? {L2_W{1'b0}} : {L2_W{1'b1}}),
+            $sformatf("upper half all %0d, lower half the opposite: the lower half is passed", u));
+    end
+
     // ---- handshakes pass straight through, in every combination ----
     for (int v = 0; v < 16; v++) begin
       l2_req_valid  = v[0];
