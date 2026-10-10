@@ -10,3 +10,9 @@ sim/*.vcd
 # Icarus default output of a bare `iverilog` run without -o, and any vvp image
 a.out
 *.vvp
+
+# Local tooling state: Claude Code worktrees, per-user settings, and subagent scratch workspaces.
+# Only these paths are ignored, so any project-level .claude/ config added later stays trackable.
+.claude/worktrees/
+.claude/settings.local.json
+.superpowers/

@@ -16,4 +16,9 @@ package mlc_pkg;
   localparam int L1_TAG_W          = ADDR_W - L1_INDEX_W - L1_OFFSET_W; // 20
   localparam int L1_WORD_SEL_W     = $clog2(L1_WORDS_PER_LINE); // 3
 
+  // L2 parameters (01_requirements.md PM-03..PM-05; 02_architecture.md §2.2)
+  localparam int L2_CAPACITY_B = 32768;
+  localparam int L2_LINE_B     = 32;
+  localparam int L2_WAYS       = 4;
+
 endpackage

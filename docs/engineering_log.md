@@ -739,11 +739,169 @@ Whether this materially changes synthesized area or timing versus one combined p
 synthesis optimization claim.
 
 **Result.** `l2_cache_ctrl.sv` (and `l3_cache_ctrl.sv` when Phase 3 reuses it) splits `tag_array`/
-`dirty_array`/`data_array` writes into one reset-free `always_ff @(posedge clk)`, and `valid_array`
-plus all scalar FSM/control state into a separate `always_ff @(posedge clk or negedge rst_n)`.
+`dirty_array`/`data_array` writes into one reset-free `always_ff @(posedge clk)`, and `valid_array`,
+the FSM `state`, and the `miss_*` latches into a separate `always_ff @(posedge clk or negedge rst_n)`.
+The victim register (`victim_way_latched`/`victim_tag_latched`/`victim_line_latched`, D-018) also
+lives in the reset-free block. This is harmless: like the arrays, it is don't-care until written,
+and `S_TAG_CHECK` always writes it before `S_EVICT_WRITEBACK` or a fill reads it.
 This supersedes D-017's guidance for any array whose entry count materially exceeds L1's — D-017's
 single-indexing fix still applies within each array access, but is no longer sufficient on its
 own at L2/L3 scale without this separation too.
+
+The memory-inference property is now a permanent, explicit check on the real module, not only
+Task 3's informal inspection of Yosys's "Replacing memory" warning text. `scripts/lint.ys`'s
+`l2_cache_ctrl` block asserts `select -assert-count 3 l2_cache_ctrl/m:*` (exactly `tag_array`,
+`dirty_array` and `data_array` remain real `$mem` cells; `valid_array` is expected to flatten) and
+`select -assert-count 1 l2_cache_ctrl/m:data_array`. `make lint` passes with both assertions (exit 0,
+about 37 s on this machine, 2026-10-01). A deliberately wrong count (4) was confirmed to fail,
+listing exactly those three memories.
+
+---
+
+## D-020 — Testbench forward-log monitors: no queue of a struct type on Icarus 12; use parallel queues
+
+**2026-09-30 · Phase 2 (`tb_l2.sv` bring-up)**
+
+**Problem.** `sim/tb_l2.sv`'s forward-log monitor (the mutation-testing-motivated pattern that
+records every downstream write handshake so an eviction write-back is checked at the receiving
+end, not by re-reading `l2_cache_ctrl.sv`'s own array) was first written the natural way: a
+`fwd_entry_t` packed struct (`{addr, line}`) held in a queue, pushed with an assignment-pattern
+literal (`fwd_log.push_back('{addr: dn_req_addr, line: dn_req_line})`). Compiling it hit three
+distinct failures in sequence, not one: (1) the assignment-pattern literal as a direct task-call
+argument — `Syntax error in task arguments`; (2) after moving the literal into a temporary of the
+packed-struct type, `Sorry: Queue of type ... is not yet supported`; (3) switching the struct from
+`packed` to plain (unpacked) to work around (2) instead hit `Sorry: Unpacked structs not
+supported`. So the actual blocker is (2)/(3) — Icarus 12 supports a queue of a struct type in
+neither form — and (1) was a symptom of trying to work around it in place rather than the root
+cause.
+
+**Options considered.**
+
+1. *Keep the struct-queue design and find some third struct spelling that elaborates.* Ruled out
+   directly: both spellings SystemVerilog allows for a struct type (`packed`, unpacked) were tried
+   and both are explicitly unsupported by Icarus 12's queue elaboration, per the tool's own
+   messages — there is no third form to try.
+2. *Two parallel queues of plain packed vectors* (`fwd_addr_log[$]` of `[ADDR_W-1:0]`,
+   `fwd_line_log[$]` of `[LINE_W-1:0]`), pushed and popped together by index/order rather than as
+   one aggregate.
+
+**Decision.** Option 2.
+
+**Reason.** Confirmed directly with a minimal reproduction outside the testbench: a queue of a
+plain packed vector (`logic [255:0] q[$]`) pushes, sizes, and pops correctly on Icarus 12, with no
+warning of any kind — the limitation is specific to queues of an aggregate (struct) element type,
+not to queues in general. Two parallel queues preserve the forward-log monitor's actual verification
+property unchanged (one entry per accepted downstream write handshake, poppable in issue order,
+checked at the receiving end) since both queues are only ever pushed together (one `always @(posedge
+clk)` block, one `if`) and popped together (`check_fwd_one` pops both before comparing), so they
+cannot desync into different lengths.
+
+**Tradeoffs.** Two related queues instead of one is a smaller abstraction than the natural
+`{addr, line}` pairing suggests the data has — a reader must know they are kept in lockstep by
+convention, not by the type system. Mitigated by keeping every push and every pop of the two
+queues textually adjacent (never one without the other) and commented as to why the split exists.
+
+**Result.** `sim/tb_l2.sv`'s forward-log monitor uses `fwd_addr_log[$]`/`fwd_line_log[$]` in place
+of a `fwd_entry_t` struct queue; `check_fwd_one`/`check_fwd_empty` read both. This is a testbench-
+only finding (no RTL is affected) but is forward-relevant: Phase 3's `tb_l3.sv` is expected to
+reuse the same forward-log-monitor pattern for its own eviction write-back checks (per the
+mutation-testing discipline this project follows) and should use the two-parallel-queues form from
+the start rather than rediscover this.
+
+---
+
+## D-021 — L2/L3 upstream writes are posted: accepted on `req_ready` alone, never answered with `resp_valid`
+
+**2026-10-01 · Phase 2 (final whole-branch review fix wave)**
+
+**Problem.** `l2_cache_ctrl.sv` as first built gated upstream write completion on
+`resp_ready`/`resp_valid` exactly as it gated reads: a write hit was accepted only while
+`resp_ready` was high (`req_ready`'s hit term), both a write hit and a write-allocate miss
+completion raised `resp_valid`, and `S_UPDATE_TAG` waited for `resp_ready` before returning to
+`S_IDLE`. The already-merged L1 (`rtl/l1/l1_cache_ctrl.sv`, D-015) forwards every write-through
+write as a *posted* request: it presents the forward (directly, or from its 1-entry skid register),
+treats it as done as soon as `dn_req_ready` is high, and never waits for or consumes a response to
+it — its `dn_resp_ready` is asserted only while L1 itself is in `S_ALLOC_FILL`, which has nothing to
+do with write forwarding. Against that neighbor the two failure modes are:
+
+1. *A forwarded write that hits in L2 deadlocks.* L2 holds `req_ready` low waiting for a
+   `resp_ready` that L1 never raises, so L1's skid register never drains and L1's own CPU-facing
+   `req_ready` stays low for good. The Phase 2 final whole-branch review found this and confirmed it
+   by simulating L1 -> L2 -> `l3_stub` with one forwarded write; the root cause was confirmed
+   independently by reading the three expressions above, none of which distinguishes a read from a
+   write.
+2. *A forwarded write that misses in L2 silently corrupts a later, unrelated L1 fill.* The write is
+   accepted (a miss never needed `resp_ready`), but its completion then parks in `S_UPDATE_TAG`
+   presenting `resp_valid` with the merged line. The next time L1 misses on any address, it enters
+   `S_ALLOC_FILL`, raises `dn_resp_ready`, and takes that stale write-miss "response" as its own
+   fill data. Found while preparing this fix and reproduced in a scratch simulation (not checked in:
+   L1 -> L2 -> `l3_stub`, with L2's copy of an L1-resident line invalidated to force an L2 write
+   miss): an unrelated L1 read of `0x2224` returned `0xABCD1234`, the forwarded write's data,
+   instead of `0x00002221`.
+
+**Options considered.**
+
+1. *Posted upstream writes at L2.* A write, hit or write-allocate miss, is accepted on `req_ready`
+   alone and never produces `resp_valid`. Only a read hit still needs `resp_ready` to be accepted,
+   because only a read hit hands back data in the same cycle it is accepted.
+2. *Make L1 wait for a write response.* Change L1's skid register to hold until L2 returns a write
+   acknowledgment, and assert `dn_resp_ready` for it. This reopens an already-merged, reviewed
+   module and its D-015 contract. It also adds a round trip to every write-through forward, which is
+   the coupling D-003 and D-015 exist to keep off L1's write path.
+3. *A separate write-acknowledgment channel* (an AXI `B`-channel-style `wack_valid`/`wack_ready`
+   pair). More signals at every level boundary, and no level has any use for the acknowledgment.
+
+**Decision.** Option 1. It is exactly three expressions in `l2_cache_ctrl.sv`:
+`req_ready`'s hit term becomes `(!req_valid || !is_hit || req_we || resp_ready)`, `resp_valid`
+becomes `(state == S_UPDATE_TAG && !miss_is_write) || (<hit accepted> && !req_we)`, and
+`S_UPDATE_TAG` exits on `miss_is_write || resp_ready`. Nothing else in the RTL changes:
+`commit_write_hit` was already computed independently of `resp_ready`, so a write hit still commits
+on its acceptance edge; the phantom-response guard (`resp_valid`'s hit term includes `req_ready`) is
+unchanged and still protects reads; and the downstream write-back path (`dn_*`) is untouched, so
+FR-15 (write hits never propagate downstream) still holds.
+
+**Reason.** Posted writes are what the interface already describes. `04_interfaces.md` §2 defines
+`resp_valid`/`resp_ready` on the inter-level links as the *fill-response* handshake, and no write on
+those links ever had a response: L1's write-through forwards are posted (D-015), and L2's own
+eviction write-backs to `l3_stub` are posted too — the stub absorbs a write-back with no response.
+Before this fix, L2 was the one place that expected a response to a write. Option 1 brings L2's
+upstream side in line with its own downstream side and with its real upstream neighbor, and it does
+so without touching L1. Write ordering is still safe without an acknowledgment, because L2 is
+blocking (D-004): after it accepts a write-allocate miss, `req_ready` stays low until the merged
+line is committed, so no later request can overtake the write.
+
+**Tradeoffs.** The upstream level never learns when a posted write-allocate miss has actually landed
+in L2's array. No level needs to know this in v1 (blocking misses make ordering implicit, see above),
+but a future non-blocking design would have to revisit it together with D-004. A read hit still
+needs `resp_ready` in its acceptance cycle, so the "drive `resp_ready` independently of
+`resp_valid`" rule of `04_interfaces.md` §1 still applies to reads at L2.
+
+*Separate item, NOT YET ADDRESSED (Phase 3 planning).* The upstream port still has no full-line
+write input (`req_line`), so this module cannot yet be reused completely unmodified as L3 to receive
+L2's own write-back traffic. L1 -> L2 writes are word-granularity write-through (`req_wdata` +
+`req_wstrb`), while L2 -> L3 writes are line-granularity write-backs (`dn_req_line`, see
+`04_interfaces.md` §2's `req_line` row). FR-17 requires L2 and L3 to be one module, so Phase 3 has to
+add a line-write path to the upstream port. That is out of Phase 2's scope (Phase 2's Definition of
+Done explicitly excludes L3), so it is deliberately deferred here and not fixed.
+
+**Result.** `rtl/l2/l2_cache_ctrl.sv` carries the three-expression change above. `sim/tb_l2.sv` now
+treats every write as posted. `cpu_write_hit` drives `resp_ready` low (as L1 does), completes on
+`req_ready` alone, and checks at the acceptance edge that the write was both accepted and a genuine
+hit. The new `cpu_write_alloc` holds `resp_ready` low and waits for the miss to start
+(`S_TAG_CHECK`) and fully finish (`S_IDLE`). A directed D-021 regression checks, with `resp_ready`
+low throughout, that a write hit is accepted without `resp_valid`, that a write-allocate miss leaves
+`S_UPDATE_TAG` after one cycle without `resp_valid`, and that both writes land in the array. A
+whole-run monitor checks that no write, hit or miss, raises `resp_valid` anywhere in the test.
+`make sim` passes (`sim/logs/tb_l2.log`). The same updated `tb_l2.sv` run against the pre-fix RTL
+fails (the write-hit acceptance check and read-back fail, then the watchdog fires when the posted
+write-allocate never leaves `S_UPDATE_TAG`), so the regression really detects the bug. Both failure
+modes in **Problem** were reproduced on the pre-fix RTL and pass on the fixed RTL in scratch
+L1 -> L2 -> `l3_stub` simulations. Those simulations are not checked in: L1/L2 integration testing
+belongs to a later phase, and the checked-in evidence for this decision is `tb_l2`. After the rest
+of the Phase 2 final-review fix wave, `tb_l2` runs 107 checks, all passing (`sim/logs/tb_l2.log`,
+2026-10-01). In a scratch mutation run (also not checked in), reverting any one of the three
+expressions was caught by the suite, and so was dropping only the `!req_we` from `resp_valid`'s hit
+term.
 
 ---
 

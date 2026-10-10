@@ -93,6 +93,16 @@ is never taken as a second request. The Phase 1 test stub (`sim/l1_downstream_st
 this by construction (its `req_ready` is high only in its idle state); the Phase 2 L2 controller
 must honor it too.
 
+**Contract: writes on these links are posted (D-021, binding on L2 and L3).** A write — an L1
+write-through forward, or an L2 write-back — is complete as soon as the downstream level's
+`req_ready` accepts it. The downstream level never raises `resp_valid` for a write, and the
+upstream level never has to raise `resp_ready` for one (L1 asserts `dn_resp_ready` only while it is
+itself waiting for a fill). Only a read hit still needs `resp_ready` in its acceptance cycle. A
+write-allocate miss at L2 runs its whole fetch, merge and commit sequence behind `req_ready` and
+returns to idle without any response; because misses are blocking (D-004), no later request can
+overtake it. A level that answers a write with `resp_valid` would deadlock against L1, whose skid
+register drains on `req_ready` alone, and could hand L1 a stale line as a later fill's data.
+
 At the L2<->L3 boundary specifically, `req_addr`/`resp_line` pass through `l2_l3_width_adapter`,
 which changes the effective payload width (L2 line = 32 B in, L3 line = 64 B on the far side)
 per `03_microarchitecture.md` §3 — the adapter is the only place this interface's width actually

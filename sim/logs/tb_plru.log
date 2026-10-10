@@ -1,0 +1,25 @@
+PASS: reset: set 0's victim is way0
+PASS: after accessing way0: set 0's victim is way2
+PASS: after accessing way0 then way2: set 0's victim is way1 (Phase 0 hand-worked example)
+PASS: exhaustive length-1 [0]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [0,0]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [0,1]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [0,2]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [0,3]: victim matches the verified PLRU prediction
+PASS: exhaustive length-1 [1]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [1,0]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [1,1]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [1,2]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [1,3]: victim matches the verified PLRU prediction
+PASS: exhaustive length-1 [2]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [2,0]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [2,1]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [2,2]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [2,3]: victim matches the verified PLRU prediction
+PASS: exhaustive length-1 [3]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [3,0]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [3,1]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [3,2]: victim matches the verified PLRU prediction
+PASS: exhaustive length-2 [3,3]: victim matches the verified PLRU prediction
+** ALL TESTS PASSED **
+sim/tb_plru.sv:120: $finish called at 1196000 (1ps)
