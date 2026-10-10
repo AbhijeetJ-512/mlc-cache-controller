@@ -47,13 +47,13 @@ TEST_TARGETS := $(addprefix test-,$(TESTS))
 # ---- parameter-guard cases (sim/param_guard_cases.sv) -----------------------------------------
 # good_* modules must be accepted by both tools, bad_* rejected by the guard itself. The task that
 # adds a design unit appends its sources and cases below.
-ELAB_SRC       := $(PKG)
-ELAB_GOOD      :=
-ELAB_BAD       :=
+ELAB_SRC       := $(PKG) rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv sim/param_guard_cases.sv
+ELAB_GOOD      := good_l2 good_l2_2way
+ELAB_BAD       := bad_l2_ways_3 bad_l2_capacity bad_l2_line_not_pow2 bad_l2_wr_not_pow2 bad_l2_sets_not_pow2
 # Degenerate sets whose width arithmetic collapses to zero-width vectors: Icarus refuses to compile
 # them before the guard's initial block can run, so for these an Icarus compile error also counts as
 # a rejection. Yosys must still hit the guard itself.
-ELAB_BAD_EARLY :=
+ELAB_BAD_EARLY := bad_l2_ways_1 bad_l2_wr_too_wide
 
 .DEFAULT_GOAL := help
 .SECONDEXPANSION:

@@ -1000,6 +1000,118 @@ swapped 55. `tb_plru` (4 ways, 23 checks) and `tb_l2` (107) still pass.
 
 ---
 
+## D-024 — The shared controller takes a write width, so L3 receives an L2 write-back as one posted half-line write
+
+**2026-10-10 · Phase 3**
+
+**Problem.** D-021 deferred this: the controller's upstream write port was word-sized
+(`req_wdata[31:0]`, `req_wstrb[3:0]`), but L3 must receive L2's evicted 32 B line, and `FR-17` forbids a
+second copy of the controller for L3. `04_interfaces.md` §2 listed a `req_line` signal for it, a port
+the module never had. `FR-20` asks that an L2 write-back update only the addressed half of the L3 line
+and set its dirty bit.
+
+**Options considered.**
+
+1. *Add a `req_line` port plus a mode select.* New ports on a module whose L2 instance would tie them
+   off, and a second write path to verify.
+2. *Have the adapter split the write-back into eight word writes.* No change to the controller, but one
+   write-back becomes eight L3 transactions; if the line is absent the first allocates and the other
+   seven hit.
+3. *Parameterise the write width*: `WR_BYTES`, the size in bytes of one upstream write. L2 keeps the
+   default (4, one word); L3 is elaborated with `WR_BYTES = L2_LINE_B` (32).
+
+**Decision.** Option 3. The write slot inside a line is `req_addr[$clog2(WR_BYTES) +: $clog2(LINE_B/WR_BYTES)]`,
+which at L3 is address bit 5: exactly the adapter's half select. Merge, hit write, miss latch and
+write-allocate merge all use it. At least two slots per line are required (a write as wide as the line
+is rejected by a guard, D-026).
+
+**Reason.** One module, no new ports, no new state, and the L2 instance is unchanged at the default. It
+matches `03_microarchitecture.md` §3, which describes L3's array as two independently write-enabled
+32 B halves "the same byte-enable concept used for CPU-side writes, one granularity level up". One
+write-back is one hit-or-miss decision at L3.
+
+**Tradeoffs.** The upstream write bus is wider at L3 (256 data bits and 32 strobes against 32 and 4).
+A write exactly as wide as the line cannot be expressed, which nothing here needs. This supersedes the
+`req_line` row of `04_interfaces.md` §2 (updated in Task 9).
+
+**Result.** At this commit only the default width is exercised by checked-in tests: `tb_l2` still passes
+with its Phase 2 checks unchanged (108 with the alignment check of D-025). The 32-byte case, hit and
+write-allocate with byte strobes, is exercised by `tb_l3` in Task 6; until that lands it is **NOT YET
+RUN** in the repository.
+
+---
+
+## D-025 — Every request the controller sends downstream is line-aligned
+
+**2026-10-10 · Phase 3**
+
+**Problem.** L2 sent two address forms from one port: a write-back used `{tag, index, 0}` (aligned),
+but a fill request carried the raw request address, offset bits and all. `FR-24` and
+`03_microarchitecture.md` §4 say AXI addresses are line-aligned "by construction" and that the fill
+engine therefore has no alignment logic. That is only true if the level above hands it aligned
+addresses, and the reused controller at L3 would not have. No test saw it because `l3_stub` masks the
+offset bits itself. The Phase 2 pull request review found it.
+
+**Options considered.**
+
+1. *Mask in the AXI engine.* Contradicts the specified engine and hides the inconsistency upstream.
+2. *Mask in both adapter and engine.* Two places to keep right.
+3. *Latch the miss address already aligned*, so the controller never produces an unaligned one.
+
+**Decision.** Option 3: `miss_addr` is latched with its offset bits cleared.
+
+**Reason.** It fixes the one place the address is created, adds no logic (the low flops disappear), and
+makes "aligned by construction" true. Address bit 5, which the adapter uses as its half select, lies
+above L2's 5-bit offset and survives. The word position inside the line is still kept separately
+(`miss_slot`), and the response is the whole line, so nothing needs the low bits afterwards.
+
+**Tradeoffs.** Requests *into* a level keep full addresses (`04_interfaces.md` §2: the downstream level
+derives its own index and tag), so alignment is a property of what a level sends, not of what it accepts.
+
+**Result.** `tb_l2` now watches every downstream handshake and fails on any address that is not 32 B
+aligned (108 checks). A controller that latches the raw address fails exactly that check.
+
+---
+
+## D-026 — Parameter guards are `initial`-block `$fatal`s, and `make elab` proves each one fires
+
+**2026-10-10 · Phase 3**
+
+**Problem.** `NR-05` derives every field width from the parameters, and `02_architecture.md` §2 says
+consistency is "checked as an elaboration-time assertion", but nothing was checking: a capacity that is
+not a multiple of `LINE_B*WAYS`, or a non-power-of-two way count, would elaborate with wrong widths. `NR-06`
+asks for `$fatal` in a generate block, which Icarus 12 silently ignores (D-023). A guard that has never
+been seen to fire is indistinguishable from no guard.
+
+**Options considered.**
+
+1. *`$fatal` in a generate block*, as `NR-06` literally says. Honoured by Yosys, ignored by Icarus.
+2. *`$fatal` in an `initial` block.* Stops Icarus at time 0 (exit code 1) and Yosys at elaboration.
+3. *Simulation-only assertions.* Would not stop synthesis.
+
+**Decision.** Option 2, plus `make elab`. `sim/param_guard_cases.sv` lists `good_*` parameter sets that
+must be accepted and `bad_*` sets that must be rejected; `make elab` elaborates each under both tools,
+requires them to agree, and requires a rejection to carry the guard's own message. Each bad case is built
+so that exactly one guard can reject it.
+
+**Reason.** It is the only form that stops both tools, and the one-guard-per-case rule makes a deleted
+guard visible instead of being covered for by a neighbour.
+
+**Tradeoffs.** Under Icarus the check runs at time 0 of any simulation, not at compile time. Two
+degenerate sets (`WAYS = 1`, `WR_BYTES` equal to the line size) collapse to zero-width vectors that Icarus
+refuses to compile before the guard can run, so they sit in a separate list where an Icarus compile error
+also counts as a rejection; Yosys must still hit the guard itself. A "positive tag width" guard was
+dropped: it cannot be reached with 32-bit parameters short of absurd sizes, so it could never be tested.
+
+**Result.** The controller's guards: `LINE_B`, `WAYS`, `WR_BYTES` and the set count are powers of two;
+`WAYS >= 2`; `CAPACITY_B` is a multiple of `LINE_B*WAYS`; at least two write slots per line. `make elab`
+accepts 2 good sets and rejects 7 bad ones (5 by the guard's own message in both tools; the other 2 by
+the guard's message in Yosys and by an earlier compile error in Icarus). On a throwaway copy, deleting each guard in turn made `make elab` report exactly the
+cases it protects (power-of-two: 3, `WAYS >= 2`: 1, capacity multiple: 1, sets: 1, write slots: 1). Guards
+for L3, the adapter and the fill engine are added with those units.
+
+---
+
 *Phase 1 (L1 controllers) is complete; D-015 through D-017 were recorded during it. Phase 2 (L2
 controller, standalone) begins with D-018/D-019 above, applying every Yosys-compatibility lesson
 from Phase 1 (D-016, D-017) plus the two found here from the start, rather than rediscovering

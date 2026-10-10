@@ -63,6 +63,14 @@ module tb_l2;
     if (dn_req_valid && dn_req_ready && !dn_req_we) dn_rd_count++;
   end
 
+  // Every request L2 sends downstream, fill or write-back, must be line-aligned (FR-24, D-025): the
+  // AXI4 fill engine has no alignment logic and relies on it. l3_stub masks the offset bits itself,
+  // so only a direct look at dn_req_addr can see a violation.
+  int dn_unaligned_count = 0;
+  always @(posedge clk) begin
+    if (dn_req_valid && dn_req_ready && (dn_req_addr % mlc_pkg::L2_LINE_B) != 0) dn_unaligned_count++;
+  end
+
   task automatic check_fwd_one(input logic [mlc_pkg::ADDR_W-1:0] exp_addr,
                                 input logic [LINE_W-1:0] exp_line, input string msg);
     logic [mlc_pkg::ADDR_W-1:0] a;
@@ -651,6 +659,8 @@ module tb_l2;
       check(req_ready === 1'b1, "req_ready is high again after reset mid-fill");
     end
 
+    check(dn_unaligned_count == 0,
+          "every downstream request address, fill or write-back, is line-aligned (FR-24, D-025)");
     check(write_resp_count == 0,
           "no write (hit or write-allocate miss) raised resp_valid anywhere in the run (D-021, posted writes)");
 
