@@ -147,6 +147,14 @@ module tb_l1_pair_l2;
     d_req_valid <= 1'b0;
   endtask
 
+  task automatic d_write_strb(input logic [31:0] addr, input logic [31:0] data, input logic [3:0] strb);
+    @(posedge clk);
+    d_req_valid <= 1'b1; d_req_we <= 1'b1; d_req_addr <= addr; d_req_wdata <= data; d_req_wstrb <= strb; d_resp_ready <= 1'b1;
+    wait (d_req_ready);
+    @(posedge clk);
+    d_req_valid <= 1'b0;
+  endtask
+
   // A write per cycle for as long as L1-D accepts them (all hits on one resident line, each forwarded
   // to L2 as its own posted write): the traffic that would starve the instruction side under a fixed
   // priority for the data side. Assumes the caller is just after a clock edge.
@@ -261,15 +269,44 @@ module tb_l1_pair_l2;
       int first_i;
       first_i = -1;
       for (int q = 0; q < acc_from_i.size(); q++) if (first_i < 0 && acc_from_i[q]) first_i = q;
-      check(first_i >= 0 && first_i <= 3, "the instruction fill is accepted within the first few requests of a store stream");
+      check(first_i >= 0 && first_i <= 2, "the instruction fill is accepted within the first few requests of a store stream");
       check(acc_from_i.size() == 9, "the stream's eight stores and the fill were all accepted exactly once");
     end
-    d_read(DA + 32'h6000 + 32'h2000, gd);
-    d_read(DA + 32'h6000 + 28, gx);
-    check(gx === 32'h7000_0007, "the last store of the stream reached L2");
-    d_read(DA + 32'h6000 + 32'h2000, gd);
-    d_read(DA + 32'h6000, gx);
-    check(gx === 32'h7000_0000, "the first store of the stream reached L2");
+    d_read(DA + 32'h6000 + 32'h2000, gd);                      // evict the line from L1-D; L2 must hold all eight stores
+    for (int w = 0; w < 8; w++) begin
+      d_read(DA + 32'h6000 + w * 4, gx);
+      check(gx === 32'h7000_0000 + w, $sformatf("store %0d of the stream reached L2", w));
+    end
+
+    // ---- both L1 controllers miss at once and L2 hits for both: each hit response goes to the side being accepted ----
+    // (a response routed by anything but "the requester being accepted" hands one side the other's word)
+    d_read(DA + 32'h0A00, gd);                                 // X: in L1-D and L2
+    d_read(DA + 32'h0B00, gd);                                 // Y: in L1-D and L2
+    d_read(DA + 32'h0A00 + 32'h2000, gd);                      // evict X from L1-D, it stays in L2
+    i_read(IA + 32'h0C00, gi);                                 // the instruction side was accepted last
+    fork
+      i_read(DA + 32'h0B00 + 4, gi);                           // L1-I miss, L2 hit on Y
+      d_read(DA + 32'h0A00 + 8, gd);                           // L1-D miss, L2 hit on X
+    join
+    check(gi === image_word(DA + 32'h0B00 + 4), "a tie of two L2 hits (instruction side accepted last): the fetch gets its own word");
+    check(gd === image_word(DA + 32'h0A00 + 8), "a tie of two L2 hits (instruction side accepted last): the load gets its own word");
+    d_read(DA + 32'h0A00 + 32'h2000, gd);                      // evict X from L1-D again; the data side was accepted last
+    i_read(DA + 32'h0B00 + 32'h2000, gi);                      // evict Y from L1-I
+    d_read(DA + 32'h0C40, gd);
+    fork
+      i_read(DA + 32'h0B00 + 12, gi);
+      d_read(DA + 32'h0A00 + 16, gd);
+    join
+    check(gi === image_word(DA + 32'h0B00 + 12), "a tie of two L2 hits (data side accepted last): the fetch gets its own word");
+    check(gd === image_word(DA + 32'h0A00 + 16), "a tie of two L2 hits (data side accepted last): the load gets its own word");
+
+    // ---- a store with a partial byte strobe keeps its strobe all the way to L2 ----
+    d_read(DA + 32'h7000, gd);
+    d_write_strb(DA + 32'h7004, 32'hAABB_CCDD, 4'b0101);       // bytes 0 and 2 only
+    d_read(DA + 32'h7000 + 32'h2000, gd);                      // evict from L1-D; the merge must have happened in L2
+    d_read(DA + 32'h7004, gx);
+    check(gx === ((image_word(DA + 32'h7004) & 32'hFF00_FF00) | (32'hAABB_CCDD & 32'h00FF_00FF)),
+          "a partial-strobe store reached L2 with its byte strobes");
 
     // ---- L2 forgets a line L1-D holds: a store to it is a posted write miss at L2 ----
     // A write miss makes L2 busy behind req_ready, with no response. The arbiter must neither wait for

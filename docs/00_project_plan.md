@@ -26,10 +26,11 @@ mlc_cache_controller/
 │   ├── mem_if/          axi4_fill_engine.sv        AXI4 burst master (L3 <-> memory)
 │   └── common/          mlc_pkg.sv, reset_sync.sv
 │
-├── sim/                          Tier 1 — MODULE-LEVEL ONLY: plain Verilog, class-free, Icarus-runnable
-│   ├── tb_l1_icache.v, tb_l1_dcache.v
-│   ├── tb_l2.v, tb_plru.v
-│   └── tb_l3.v, tb_adapter.v      (no tb_top.v — the integrated hierarchy is UVM-only, see below)
+├── sim/                          Tier 1 — MODULE-LEVEL ONLY: plain SystemVerilog, class-free, Icarus-runnable
+│   ├── tb_l1_icache.sv, tb_l1_dcache.sv, tb_l2.sv, tb_l3.sv, tb_plru.sv, tb_plru_ways.sv,
+│   │   tb_adapter.sv, tb_axi4_fill_engine.sv, tb_arbiter.sv, tb_reset_sync.sv
+│   ├── tb_l1_l2.sv, tb_l1_pair_l2.sv, tb_l2_l3_chain.sv   (boundary-contract tests, D-030/D-033)
+│   └── (no tb_top — the integrated hierarchy is UVM-only, see below; the Makefile registry is the list)
 │
 ├── tb_uvm/                       Tier 2 — FULL-HIERARCHY ONLY: UVM/SystemVerilog classes, EXTERNAL simulator
 │   ├── transaction.sv, sequence.sv, sequencer.sv

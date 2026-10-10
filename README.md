@@ -10,10 +10,10 @@ memory-side interface. Synthesis, STA, and place-and-route all target **Sky130HD
 > one IP: the L1 controllers (I$ and D$), an arbiter that lets them share L2, the shared L2/L3
 > write-back controller, the tree-PLRU module, the L2 to L3 line-size adapter, the AXI4 fill engine and
 > the structural top `mlc_cache_top`.** `make check` runs the parameter guards, a structural check of the
-> top, 13 Tier-1 testbenches (559 checks, logs checked in under `sim/logs/`) and the Yosys elaboration
+> top, 13 Tier-1 testbenches (581 checks, logs checked in under `sim/logs/`) and the Yosys elaboration
 > check (zero latches or tristates; the L2 and L3 arrays inferred as memories), all passing, in about
-> about three minutes (187 s measured). The integrated top **elaborates cleanly but has not been simulated**: its functional
-> behaviour is verified only by the Phase 5 UVM tier. Synthesis, timing, area and P&R figures are
+> three and a half minutes (214 s on the last run; 187 to 214 s across runs). The integrated top **elaborates cleanly but has not been simulated**: its functional
+> behaviour will be verified only by the Phase 5 UVM tier. Synthesis, timing, area and P&R figures are
 > **NOT YET MEASURED**; the UVM tier is **NOT YET RUN (external simulator required)**.
 > Every number in this repository either cites a checked-in tool report, is labelled
 > **NOT YET MEASURED** (a locally-runnable figure that just hasn't been produced yet), or
@@ -65,7 +65,7 @@ reasoning and the accepted tradeoff recorded in
 | [`docs/02_architecture.md`](docs/02_architecture.md) | System architecture: hierarchy diagram, per-level address partitioning (derived, not asserted), module list, data flow |
 | [`docs/03_microarchitecture.md`](docs/03_microarchitecture.md) | Per-controller FSMs, the tree-PLRU algorithm with a worked example, the line-size adapter, the AXI4 fill engine, the L1 arbiter and the top-level ports |
 | [`docs/04_interfaces.md`](docs/04_interfaces.md) | Signal-level CPU-side, inter-level, and AXI4 memory-side interface specification |
-| [`docs/engineering_log.md`](docs/engineering_log.md) | Every architectural decision: options considered, decision, reason, and the tradeoff accepted — D-001 through D-035 |
+| [`docs/engineering_log.md`](docs/engineering_log.md) | Every architectural decision: options considered, decision, reason, and the tradeoff accepted — D-001 through D-036 |
 
 ## Repository layout
 
@@ -102,7 +102,7 @@ Needs Icarus Verilog 12 and Yosys (see Toolchain below). Everything goes through
 
 ```bash
 make check             # parameter guards + top check + every Tier-1 test + Yosys lint; non-zero exit on any failure
-make sim               # every Tier-1 testbench, one verdict line each (about 2 s)
+make sim               # every Tier-1 testbench, one verdict line each (about 3 s)
 make test-tb_l3        # just one testbench; V=1 also prints its full output
 make list              # the registered testbenches
 make elab              # bad parameter sets are rejected, good ones accepted (about 30 s)
@@ -124,8 +124,9 @@ A test passes only if its simulation exits cleanly, prints no `FAIL` line, and p
   one boundary — L1 to L2, both L1 controllers to L2 through the arbiter, and L2 to adapter to L3 to
   the AXI4 fill engine — because both D-021 bugs lived on a boundary and no single-module test could
   see them. There is no Tier-1 test of the integrated hierarchy: `mlc_cache_top` gets an elaboration
-  check only (`make top` and a block in `make lint`), which proves the wiring is structurally sound
-  (every port connected, one driver per signal, no logic in the top) and nothing about behaviour.
+  check only (`make top` and a block in `make lint`), which checks the wiring against structural rules
+  (every port connected and named for its signal, one driver per signal, only wires, constants and instances in the top,
+  no loops across units) and says nothing about behaviour.
 - **Tier 2 — UVM environment** (`tb_uvm/`): a full IEEE 1800.2 UVM environment (transaction,
   sequence, sequencer, driver, monitor, agent, scoreboard, env, test, config — matching this
   portfolio's `APB_Design_and_Verification` structure) whose DUT is the **fully integrated**

@@ -130,8 +130,8 @@ module tb_arbiter;
     q_valid[s] <= 1'b0;
   endtask
 
-  function automatic logic [31:0] ia(input int hit, input int n); ia = 32'h0010_0000 + hit * 32'h1000 + n * 32'h20; endfunction
-  function automatic logic [31:0] da(input int hit, input int n); da = 32'h0020_0000 + hit * 32'h1000 + n * 32'h20; endfunction
+  function automatic logic [31:0] ia(input int hit, input int n); ia = 32'h0010_0000 + hit * 32'h1000 + n * 32'h20 + (n % 8) * 4; endfunction
+  function automatic logic [31:0] da(input int hit, input int n); da = 32'h0020_0000 + hit * 32'h1000 + n * 32'h20 + (n % 8) * 4; endfunction
 
   task automatic idle(input int n); repeat (n) @(posedge clk); endtask
 
@@ -147,7 +147,7 @@ module tb_arbiter;
   endtask
 
   logic [255:0] l0, l1;
-  bit got_late;
+  bit got_late, accepted_once;
 
   initial begin
     for (int i = 0; i < 2; i++) begin
@@ -197,6 +197,55 @@ module tb_arbiter;
     #1;
     check(acc_addr.size() == 2 && acc_addr[0] == da(0, 3) && acc_addr[1] == ia(0, 3),
           "after requester 0 won last, a tie goes to requester 1 first");
+
+    // round-robin means "the one not accepted last", not "the one that did not win the last tie": after reset
+    // one lone request from requester 0, then a tie, must go to requester 1 first
+    reset_all();
+    clear_log();
+    read_now(0, ia(1, 40), l0);
+    idle(2);
+    clear_log();
+    fork
+      read_now(0, ia(0, 41), l0);
+      read_now(1, da(0, 41), l1);
+    join
+    #1;
+    check(acc_addr.size() == 2 && acc_addr[0] == da(0, 41), "after requester 0 was accepted alone, a tie goes to requester 1");
+
+    // ---- both ask at once and L2 hits for both: each hit response goes to the requester being accepted ----
+    reset_all();
+    clear_log();
+    fork
+      read_now(0, ia(1, 60), l0);
+      read_now(1, da(1, 60), l1);
+    join
+    #1;
+    check(l0 === line_of(ia(1, 60)) && l1 === line_of(da(1, 60)), "a tie of two L2 hits after reset: each requester gets its own line");
+    check(acc_addr.size() == 2 && acc_addr[0] == ia(1, 60), "a tie of two hits is served requester 0 first after reset");
+    read_now(0, ia(1, 61), l0);
+    idle(1);
+    fork
+      read_now(0, ia(1, 62), l0);
+      read_now(1, da(1, 62), l1);
+    join
+    #1;
+    check(l0 === line_of(ia(1, 62)) && l1 === line_of(da(1, 62)), "a tie of two L2 hits after requester 0 won: each gets its own line");
+    read_now(1, da(1, 63), l1);
+    idle(1);
+    fork
+      read_now(0, ia(1, 64), l0);
+      read_now(1, da(1, 64), l1);
+    join
+    #1;
+    check(l0 === line_of(ia(1, 64)) && l1 === line_of(da(1, 64)), "a tie of two L2 hits after requester 1 won: each gets its own line");
+    // one side hits and the other misses in the same cycle
+    idle(1);
+    fork
+      read_now(0, ia(0, 65), l0);
+      read_now(1, da(1, 65), l1);
+    join
+    #1;
+    check(l0 === line_of(ia(0, 65)) && l1 === line_of(da(1, 65)), "a tie of a miss and a hit: each requester gets its own line");
 
     // ---- a hit on one side while the other side has a miss outstanding ----
     reset_all();
@@ -249,6 +298,20 @@ module tb_arbiter;
     check(acc_addr.size() == 2 && acc_we[0] == 1'b1 && acc_data[0] == 32'hD00D_0002 && acc_strb[0] == 4'hA && acc_we[1] == 1'b0,
           "the read is accepted only after L2 finished the write, and the write arrived intact");
 
+    // ---- both requesters write in the same cycle: both writes arrive intact, requester 0 first after reset ----
+    reset_all();
+    clear_log();
+    fork
+      write_now(0, ia(1, 70), 32'h1111_0001, 4'h3);
+      write_now(1, da(1, 70), 32'h2222_0002, 4'hC);
+    join
+    #1;
+    check(acc_addr.size() == 2 && acc_we[0] && acc_we[1] &&
+          acc_addr[0] == ia(1, 70) && acc_data[0] == 32'h1111_0001 && acc_strb[0] == 4'h3 &&
+          acc_addr[1] == da(1, 70) && acc_data[1] == 32'h2222_0002 && acc_strb[1] == 4'hC,
+          "two writes in the same cycle: each reaches L2 with its own address, data and strobes, requester 0 first");
+    idle(2);
+
     // ---- fairness: neither side can starve the other ----
     reset_all();
     clear_log();
@@ -290,6 +353,48 @@ module tb_arbiter;
       check(reads_seen == 4, "against a continuous write stream all four reads were served");
       check(worst <= 1, "at most one write is served between two of the reads: the write stream cannot starve them");
     end
+
+    // ---- fairness while L2 stalls: write misses keep L2 busy behind each accepted write ----
+    reset_all();
+    clear_log();
+    fork
+      begin int i; @(posedge clk); for (i = 0; i < 4; i++) read_now(0, ia(1, 50 + i), l0); end
+      begin int i; @(posedge clk); for (i = 0; i < 12; i++) write_now(1, da(0, 50 + i), 32'hBEEF_0000 + i, 4'hF); end
+    join
+    #1;
+    begin
+      int reads_seen, writes_between, worst;
+      reads_seen = 0; writes_between = 0; worst = 0;
+      for (int i = 0; i < acc_addr.size(); i++) begin
+        if (!acc_we[i]) begin
+          reads_seen++;
+          if (writes_between > worst) worst = writes_between;
+          writes_between = 0;
+        end else if (reads_seen < 4) begin
+          writes_between++;
+        end
+      end
+      check(reads_seen == 4, "against a stream of write misses all four reads were served");
+      check(worst <= 1, "at most one write miss is served between two reads: a stalled L2 does not let the writes starve the reads");
+    end
+    idle(2);
+
+    // ---- a requester that drops its read request as soon as it is accepted still gets its response ----
+    // (the L1 controllers hold the request through the fill, but the arbiter must not depend on that)
+    reset_all();
+    clear_log();
+    q_valid[1] <= 1'b1; q_we[1] <= 1'b0; q_addr[1] <= da(0, 72); q_rdr[1] <= 1'b1; waiting[1] = 1'b1;
+    accepted_once = 1'b0;
+    while (!accepted_once) begin @(posedge clk); if (r_ready[1]) accepted_once = 1'b1; end
+    q_valid[1] <= 1'b0;
+    got_late = 1'b0;
+    while (!got_late) begin @(posedge clk); if (r_valid[1] && q_rdr[1]) begin l1 = l2_resp_line; got_late = 1'b1; end end
+    q_rdr[1] <= 1'b0; waiting[1] = 1'b0;
+    #1;
+    check(l1 === line_of(da(0, 72)), "a requester that drops its read request once accepted still gets its response");
+    idle(1);
+    read_now(0, ia(1, 72), l0);
+    check(l0 === line_of(ia(1, 72)), "and the arbiter is free for the next request");
 
     // ---- reset in the middle of an outstanding read leaves the arbiter idle and usable ----
     reset_all();

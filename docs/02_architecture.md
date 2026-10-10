@@ -144,7 +144,7 @@ line.
 | `l3_cache_ctrl` | 8-way set-associative write-back cache, same controller design as L2 parameterized wider; drives the AXI4 fill engine on its own misses/evictions | Does not talk AXI4 directly (that is `axi4_fill_engine`'s job) |
 | `axi4_fill_engine` | AXI4 master: converts a "fetch this line" / "write back this line" request into the correct fixed-length burst | No cache state; purely a protocol-shaping module |
 | `plru_tree` | Parameterized N-way tree-PLRU: victim selection and per-access state update | Reused, unmodified, by both `l2_cache_ctrl` and `l3_cache_ctrl` at their respective `N` |
-| `mlc_cache_top` | Structural integration only: instantiates and wires the above, synchronises the reset with `reset_sync`, and drives constants on the AXI4 sideband signals the engine does not use (D-034) | Contains no logic of its own — a reviewer verifying "is there hidden behavior in the top" can confirm it by inspection alone, and `scripts/check_top.py` (part of `make check`) confirms it mechanically |
+| `mlc_cache_top` | Structural integration only: instantiates and wires the above, synchronises the reset with `reset_sync`, and drives constants on the AXI4 sideband signals the engine does not use (D-034) | Contains no logic of its own — a reviewer verifying "is there hidden behavior in the top" can confirm it by inspection alone, and `scripts/check_top.py` (part of `make check`) rejects any logic of the kinds it knows (blocks, gates, operators, ternaries, parameter overrides) and any mis-wire it can see; D-034 lists what it cannot |
 
 ---
 

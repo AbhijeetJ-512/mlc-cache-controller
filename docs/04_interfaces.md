@@ -201,6 +201,11 @@ not simulated (D-013).
 | AXI4 master | `m_axi_aw*`, `m_axi_w*`, `m_axi_b*`, `m_axi_ar*`, `m_axi_r*` | The §3 interface with `m_axi_` prepended. Adds `awlock`, `awcache`, `awprot`, `awqos`, `awregion` and the same five on the read address channel, driven by constants (top parameters `AXI_PROT`, `AXI_CACHE`, `AXI_QOS`, `AXI_REGION`). No IDs |
 | Status | `mem_err` | Sticky: any SLVERR/DECERR or RLAST mismatch since reset |
 
+`AXI_PROT = 3'b000` marks every access unprivileged, secure, data; `AXI_CACHE = 4'b0011` is normal, non-cacheable,
+bufferable. One `AXI_CACHE` value drives both channels; split it if a memory needs different read and write encodings.
+These are defaults chosen for a simple memory, not requirements of the cache, and were not checked against the AXI4
+specification (it is not in this repository).
+
 Everything between the L1 controllers and the AXI4 engine (§2) is internal and not exposed. The CPU-side rule of §1
 (decide `resp_ready` without waiting for `resp_valid`) applies to both ports.
 
