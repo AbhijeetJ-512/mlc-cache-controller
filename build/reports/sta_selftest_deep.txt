@@ -1,0 +1,65 @@
+baseline                       not noticed  
+no_output_delay                noticed      sta_selftest sdc main       write_sdc: output delays {}  WRONG | sta_selftest sdc reset-only write_sdc: output delays {}  WRONG
+no_input_delay                 noticed      sta_selftest sdc main       write_sdc: input delays {}  WRONG | sta_selftest sdc reset-only write_sdc: input delays {}  WRONG
+input_delay_0.5                noticed      sta_selftest sdc main       write_sdc: input delays {'a': 0.5, 'rst_n': 0.5}  WRONG | sta_selftest sdc reset-only write_sdc: input delays {'a': 0.5, 'rst_n': 0.5}  WRONG
+input_delay_350_units          noticed      sta_selftest sdc main       write_sdc: input delays {'a': 350.0, 'rst_n': 350.0}  WRONG | sta_selftest sdc reset-only write_sdc: input delays {'a': 350.0, 'rst_n': 350.0}  WRONG
+output_delay_0                 noticed      sta_selftest sdc main       write_sdc: output delays {'q': 0.0, 'y': 0.0}  WRONG | sta_selftest sdc reset-only write_sdc: output delays {'q': 0.0, 'y': 0.0}  WRONG
+cmd_units_ps                   noticed      sta_selftest sdc report     feed-through under mlc.sdc: input delay 0.3500, output delay -0.1500, delay of the | sta_selftest end to end     measure(): classes netlist status ok, minimum period 522.099 ns equals its worst c
+no_driving_cell                noticed      sta_selftest sdc main       write_sdc: driving cells {}  WRONG | sta_selftest sdc reset-only write_sdc: driving cells {}  WRONG
+driving_cell_inv_4             noticed      sta_selftest sdc main       write_sdc: driving cells {'a': 'sky130_fd_sc_hd__inv_4'}  WRONG | sta_selftest sdc reset-only write_sdc: driving cells {'rst_n': 'sky130_fd_sc_hd__inv_4', 'a': 'sky130_fd_sc_hd
+no_load                        noticed      sta_selftest sdc main       write_sdc: loads {}  WRONG | sta_selftest sdc reset-only write_sdc: loads {}  WRONG
+load_0.04                      noticed      sta_selftest sdc main       write_sdc: loads {'q': 0.04, 'y': 0.04}  WRONG | sta_selftest sdc reset-only write_sdc: loads {'q': 0.04, 'y': 0.04}  WRONG
+no_reset_false_path            noticed      sta_selftest sdc main       write_sdc: false paths from []  WRONG | sta_selftest reset ports    none from rst_n in the main analysis; reset-only: async rst_n->a reset pin, data r
+false_path_to_async_pins       noticed      sta_selftest sdc main       write_sdc: false paths from []  WRONG | sta_selftest reset ports    none from rst_n in the main analysis; reset-only: async rst_n->a reset pin, data r
+false_path_all_inputs          noticed      sta_selftest sdc main       write_sdc: false paths from []  WRONG | sta_selftest reset ports    none from rst_n in the main analysis; reset-only: async rst_n->a reset pin, data r
+clock_virtual                  noticed      sta_selftest classes        reg2reg r1->r2 depth 4, in2reg a->r3 depth 3, reg2out r4->q_r2o depth 2, in2out re | sta_selftest reset ports    none from rst_n in the main analysis; reset-only: async rst_n->a reset pin, data r
+reset_ports_only_rst_n         noticed      sta_selftest reset input    async_rst_n is a reset start point (false path in the main analysis, a path in the
+no_ideal_slew_on_reset         noticed      sta_selftest sdc main       write_sdc: input transitions {}  WRONG
+reset_driven_in_main           noticed      sta_selftest sdc main       write_sdc: driving cells {'rst_n': 'sky130_fd_sc_hd__inv_2', 'a': 'sky130_fd_sc_hd | sta_selftest slew isolation arrival at f/D with 1 and 301 loads on rst_n: main analysis 0.41905 and 0.52146 ns
+reset_undriven_in_reset_only   noticed      sta_selftest sdc reset-only write_sdc: driving cells {'a': 'sky130_fd_sc_hd__inv_2'}  WRONG | sta_selftest reset ports    none from rst_n in the main analysis; reset-only: async rst_n->a reset pin, data r
+no_check_setup                 noticed      sta_selftest combinational loop accepted  WRONG  | sta_selftest unconstrained output accepted  WRONG 
+overall_max_is_min             noticed      sta_selftest classes        reg2reg r1->r2 depth 4, in2reg a->r3 depth 3, reg2out r4->q_r2o depth 2, in2out re | sta_selftest end to end     measure(): classes netlist status failed, minimum period 9.605 ns equals its worst
+brief_writes_nothing           noticed      TypeError: must be real number, not NoneType
+classes_dropped                noticed      sta_selftest classes        reg2reg r1->r2 depth 4, in2reg a->r3 depth 3, reg2out r4->q_r2o depth 2, in2out re
+in2reg_wrong_sets              noticed      sta_selftest classes        reg2reg r1->r2 depth 4, in2reg a->r3 depth 3, reg2out r4->q_r2o depth 2, in2out re
+req2resp_dropped               noticed      sta_selftest classes        reg2reg r1->r2 depth 4, in2reg a->r3 depth 3, reg2out r4->q_r2o depth 2, in2out re
+req2resp_all_inputs            noticed      sta_selftest classes        reg2reg r1->r2 depth 4, in2reg a->r3 depth 3, reg2out r4->q_r2o depth 2, in2out re
+req2resp_all_outputs           noticed      sta_selftest classes        reg2reg r1->r2 depth 4, in2reg a->r3 depth 3, reg2out r4->q_r2o depth 2, in2out re
+in2out_dropped                 noticed      sta_selftest classes        reg2reg r1->r2 depth 4, in2reg a->r3 depth 3, reg2out r4->q_r2o depth 2, in2out re | sta_selftest end to end     measure(): classes netlist status failed, minimum period 0.817 ns equals its worst
+reset_async_dropped            noticed      sta_selftest reset ports    none from rst_n in the main analysis; reset-only: async rst_n->a reset pin, data r | sta_selftest reset input    async_rst_n is a reset start point (false path in the main analysis, a path in the
+reset_data_in_async_group      noticed      sta_selftest reset ports    none from rst_n in the main analysis; reset-only: async rst_n->a reset pin, data r
+reset2out_wrong_set            noticed      sta_selftest reset ports    none from rst_n in the main analysis; reset-only: async rst_n->a reset pin, data r
+path_group_ignored             noticed      sta_selftest reset ports    none from rst_n in the main analysis; reset-only: async rst_n->a reset pin, data r
+limits_violators_back          not noticed  only makes timing.txt larger
+bracket_always_ok              noticed      sta_selftest bracket        true minimum 0.631 ns accepted: True; twice it refused: False; half of it refused:
+bracket_factor_0               noticed      sta_selftest end to end     measure(): classes netlist status failed, minimum period 0.817 ns equals its worst | sta_selftest bracket        true minimum 0.631 ns accepted: False; twice it refused: True; half of it refused:
+bracket_factor_0.6             noticed      sta_selftest bracket        true minimum 0.631 ns accepted: True; twice it refused: False; half of it refused:
+worst_path_best                noticed      sta_selftest parser         reg2reg slack 8.984 depth 2, in2reg slack -1.25 depth 2  WRONG
+overall_best_not_worst         noticed      sta_selftest overall        worst of two path groups: setup 5.25 (expected 2.125), hold 0.2 (expected 0.2)  WR
+hold_overall_best              noticed      sta_selftest overall        worst of two path groups: setup 2.125 (expected 2.125), hold 0.5 (expected 0.2)  W
+need_plus_slack                noticed      sta_selftest classes        reg2reg r1->r2 depth 4, in2reg a->r3 depth 3, reg2out r4->q_r2o depth 2, in2out re | sta_selftest parser         reg2reg slack 3.5 depth 1, in2reg slack -1.25 depth 2  WRONG
+tmin_plus_slack                noticed      sta_selftest end to end     measure(): classes netlist status failed, minimum period 19.183 ns equals its wors
+measure_ignores_problems       noticed      sta_selftest end to end     measure(): classes netlist status ok, minimum period 0.817 ns equals its worst cla
+measure_skips_consistency      noticed      sta_selftest end to end     measure(): classes netlist status ok, minimum period 0.817 ns equals its worst cla
+measure_skips_bracket          noticed      sta_selftest end to end     measure(): classes netlist status ok, minimum period 0.817 ns equals its worst cla
+require_fresh_off              noticed      sta_selftest staleness      a file newer than the netlist is reported (True), a missing one is not; the timing
+log_problems_never             noticed      sta_selftest combinational loop accepted  WRONG  | sta_selftest unconstrained output accepted  WRONG 
+log_problems_errors_only       noticed      sta_selftest combinational loop accepted  WRONG  | sta_selftest unconstrained output accepted  WRONG 
+composition_buf_as_other       noticed      sta_selftest composition    buffers 0.00, multiplexers 1.15, other 0.72, clock-to-output 0.35 ns, 0 buffers, d
+composition_mux_as_other       noticed      sta_selftest composition    buffers 0.50, multiplexers 0.00, other 1.37, clock-to-output 0.35 ns, 2 buffers, d
+buffer_runs_merged             noticed      sta_selftest buffer runs    runs [(6, 0.7)] (expected 2 buffers 0.2 ns, 1 buffer 0.2 ns, 3 buffers 0.3 ns); af
+depth_counts_flops             not noticed  equivalent: the depth regex never matches a flip-flop's Q pin
+reset_fanout_none              noticed      sta_selftest reset ports    none from rst_n in the main analysis; reset-only: async rst_n->a reset pin, data r | sta_selftest reset fan-out  fan-out of the reset port None (expected 1796); a path from a flip-flop has none  
+reset_fanout_not_set           noticed      sta_selftest reset ports    none from rst_n in the main analysis; reset-only: async rst_n->a reset pin, data r
+class_consistency_off          noticed      sta_selftest consistency    classes whose worst need is 11.25 ns: agree with an overall 11.25 ns: True; disagr | sta_selftest end to end     measure(): classes netlist status ok, minimum period 0.817 ns equals its worst cla
+class_consistency_best         noticed      sta_selftest classes        reg2reg r1->r2 depth 4, in2reg a->r3 depth 3, reg2out r4->q_r2o depth 2, in2out re | sta_selftest consistency    classes whose worst need is 11.25 ns: agree with an overall 11.25 ns: False; disag
+base_period_5                  not noticed  equivalent: the minimum period does not depend on the base period
+stale_inputs_never             noticed      sta_selftest staleness      a file newer than the netlist is reported (False), a missing one is not; the timin
+stale_inputs_no_abc_constr     noticed      sta_selftest staleness      a file newer than the netlist is reported (True), a missing one is not; the timing
+stale_inputs_no_dontuse        noticed      sta_selftest staleness      a file newer than the netlist is reported (True), a missing one is not; the timing
+in_delay_constant_changed      noticed      sta_selftest sdc main       write_sdc: input delays {'a': 0.35, 'rst_n': 0.35}  WRONG | sta_selftest sdc reset-only write_sdc: input delays {'a': 0.35, 'rst_n': 0.35}  WRONG
+abc_constr_load_changed        noticed      sta_selftest abc constr     abc_speed.constr drives with sky130_fd_sc_hd__inv_2 and loads 0.03 pF  WRONG
+abc_constr_drive_changed       noticed      sta_selftest abc constr     abc_speed.constr drives with sky130_fd_sc_hd__inv_4 and loads 0.033442 pF  WRONG
+
+variants 61, noticed 58, not noticed 3 (expected: base_period_5, depth_counts_flops, limits_violators_back)
+baseline (no edit) passes the self-test: True

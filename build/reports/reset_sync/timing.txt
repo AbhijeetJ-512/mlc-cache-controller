@@ -183,5 +183,17 @@ No paths found.
 No paths found.
 
 === limits ===
+max slew
+
+Pin                                    Limit    Slew   Slack
+------------------------------------------------------------
+_1_/Q                                   1.50    0.30    1.20 (MET)
+
+max capacitance
+
+Pin                                    Limit     Cap   Slack
+------------------------------------------------------------
+_1_/Q                                   0.17    0.03    0.14 (MET)
+
 wns max 0.00
 tns max 0.00

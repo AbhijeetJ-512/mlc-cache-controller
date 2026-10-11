@@ -32,6 +32,7 @@ reset_data_path: rst_n -> _6551_
 reset2out_min_period_ns: 0.988
 reset2out_path: rst_n -> req_ready
 total_power_w: 1.42e-02
-wall_seconds: 4
-peak_rss_kib: 68172
+wall_seconds_base_run: 4
+wall_seconds_total: 6
+peak_rss_kib: 68456
 sta: 2.7.0

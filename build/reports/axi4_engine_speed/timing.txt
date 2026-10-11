@@ -262,6 +262,24 @@ No paths found.
 === in2out min ===
 No paths found.
 
+=== req2resp max ===
+No paths found.
+
+=== req2resp min ===
+No paths found.
+
 === limits ===
+max slew
+
+Pin                                    Limit    Slew   Slack
+------------------------------------------------------------
+_6186_/Y                                1.49    0.96    0.53 (MET)
+
+max capacitance
+
+Pin                                    Limit     Cap   Slack
+------------------------------------------------------------
+_6186_/Y                                0.05    0.03    0.02 (MET)
+
 wns max 0.00
 tns max 0.00

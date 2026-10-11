@@ -118,5 +118,17 @@ Fanout      Cap     Slew    Delay     Time   Description
 
 
 === limits ===
+max slew
+
+Pin                                    Limit    Slew   Slack
+------------------------------------------------------------
+l2_req_addr[5]                          1.50    0.23    1.27 (MET)
+
+max capacitance
+
+Pin                                    Limit     Cap   Slack
+------------------------------------------------------------
+_030_/X                                 0.30    0.03    0.26 (MET)
+
 wns max 0.00
 tns max 0.00

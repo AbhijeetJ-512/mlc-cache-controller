@@ -1,3 +1,3 @@
-input 0.00 ns, output 0.00 ns: min period 5.647 ns, worst hold slack 0.181, per class reg2reg 5.111, in2reg 5.647, reg2out 4.610, in2out 5.105
-input 0.35 ns, output 0.15 ns: min period 5.997 ns, worst hold slack 0.427, per class reg2reg 5.111, in2reg 5.997, reg2out 4.760, in2out 5.605
-input 1.00 ns, output 0.50 ns: min period 6.647 ns, worst hold slack 0.427, per class reg2reg 5.111, in2reg 6.647, reg2out 5.110, in2out 6.605
+input 0.00 ns, output 0.00 ns: min period 5.579 ns, worst hold slack 0.181, per class reg2reg 5.043, in2reg 5.579, reg2out 4.610, in2out 5.105, req2resp 4.173
+input 0.35 ns, output 0.15 ns: min period 5.929 ns, worst hold slack 0.427, per class reg2reg 5.043, in2reg 5.929, reg2out 4.760, in2out 5.605, req2resp 4.673
+input 1.00 ns, output 0.50 ns: min period 6.605 ns, worst hold slack 0.427, per class reg2reg 5.043, in2reg 6.579, reg2out 5.110, in2out 6.605, req2resp 5.673

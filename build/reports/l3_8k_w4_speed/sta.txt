@@ -6,16 +6,16 @@ reason: -
 base_period_ns: 10.000
 input_delay_ns: 0.35
 output_delay_ns: 0.15
-min_period_ns: 7.054
+min_period_ns: 7.052
 fmax_mhz: 141.8
-worst_setup_slack_at_base_ns: 2.946
+worst_setup_slack_at_base_ns: 2.948
 worst_hold_slack_ns: 0.418
-bracket: 7.195 ns: worst setup slack 0.141 (as required); 6.913 ns: worst setup slack -0.141 (as required)
+bracket: 7.193 ns: worst setup slack 0.141 (as required); 6.911 ns: worst setup slack -0.141 (as required)
 reg2reg_min_period_ns: 6.483
 reg2reg_depth: 20
 reg2reg_path: _488493_ -> _492013_
 reg2reg_hold_slack_ns: 0.418
-in2reg_min_period_ns: 7.054
+in2reg_min_period_ns: 7.052
 in2reg_depth: 27
 in2reg_path: req_addr[6] -> _447713_
 in2reg_hold_slack_ns: 0.520
@@ -27,6 +27,10 @@ in2out_min_period_ns: 6.040
 in2out_depth: 20
 in2out_path: req_addr[7] -> resp_line[191]
 in2out_hold_slack_ns: 0.792
+req2resp_min_period_ns: 6.040
+req2resp_depth: 20
+req2resp_path: req_addr[7] -> resp_line[191]
+req2resp_hold_slack_ns: 0.792
 reset_unbuffered_min_period_ns: 5.684
 reset_net_fanout: 229
 reset_async_min_period_ns: 3.657
@@ -36,6 +40,7 @@ reset_data_path: rst_n -> _448118_
 reset2out_min_period_ns: 4.700
 reset2out_path: rst_n -> resp_valid
 total_power_w: 5.55e-01
-wall_seconds: 446
-peak_rss_kib: 977772
+wall_seconds_base_run: 506
+wall_seconds_total: 554
+peak_rss_kib: 978088
 sta: 2.7.0

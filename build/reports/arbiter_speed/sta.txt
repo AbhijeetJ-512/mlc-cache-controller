@@ -31,9 +31,8 @@ reset_unbuffered_min_period_ns: 0.264
 reset_net_fanout: 3
 reset_async_min_period_ns: 0.264
 reset_async_path: rst_n -> _109_
-reset_data_min_period_ns: 0.264
-reset_data_path: rst_n -> _109_
 total_power_w: 2.36e-04
-wall_seconds: 0
-peak_rss_kib: 54572
+wall_seconds_base_run: 0
+wall_seconds_total: 1
+peak_rss_kib: 54460
 sta: 2.7.0

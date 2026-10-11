@@ -27,6 +27,10 @@ in2out_min_period_ns: 3.973
 in2out_depth: 18
 in2out_path: req_addr[5] -> resp_valid
 in2out_hold_slack_ns: 0.889
+req2resp_min_period_ns: 3.973
+req2resp_depth: 18
+req2resp_path: req_addr[5] -> resp_valid
+req2resp_hold_slack_ns: 0.889
 reset_unbuffered_min_period_ns: 3.871
 reset_net_fanout: 134
 reset_async_min_period_ns: 2.179
@@ -36,6 +40,7 @@ reset_data_path: rst_n -> _186262_
 reset2out_min_period_ns: 3.539
 reset2out_path: rst_n -> resp_valid
 total_power_w: 2.27e-01
-wall_seconds: 115
-peak_rss_kib: 467360
+wall_seconds_base_run: 108
+wall_seconds_total: 128
+peak_rss_kib: 467792
 sta: 2.7.0

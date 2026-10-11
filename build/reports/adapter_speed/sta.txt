@@ -18,6 +18,7 @@ in2out_hold_slack_ns: 0.553
 reset_unbuffered_min_period_ns: -
 reset_net_fanout: -
 total_power_w: 3.16e-04
-wall_seconds: 1
-peak_rss_kib: 59404
+wall_seconds_base_run: 1
+wall_seconds_total: 2
+peak_rss_kib: 59460
 sta: 2.7.0

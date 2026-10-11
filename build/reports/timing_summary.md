@@ -5,63 +5,89 @@ clock, with an input delay of 0.35 ns, an output delay of 0.15 ns, an `inv_2` dr
 output (`constraints/mlc.sdc`), and no wire parasitics. 'min period' is the smallest clock period at which no setup check
 fails: the base period minus the worst setup slack, confirmed by running STA 2% above it (no violation) and 2% below it
 (a violation). Paths that start at a reset port are false paths in this figure and are reported in their own column (the
-unbuffered period they would need, and the fan-out of the reset net that P&R must buffer). The four class columns give the
-period each class of path needs on its own: register to register, input to
-register, register to output, and input to output (the combinational hit path of PF-01). 'depth' is the number of
-combinational cells on the worst path of the limiting class. Hold slack is the worst over all hold checks. Power is OpenSTA's
-static estimate at its default switching activity, not a simulation-driven figure (PW-01).
+unbuffered period they would need, and the fan-out of the reset net that P&R must buffer; the main figure also gives those
+ports an ideal slew, because a false path removes a check and not the slew it would pass on). The four class columns give the
+period each class of path needs on its own: register to register, input to register, register to output, and input to output
+(a purely combinational path from an input port to an output port; the worst one is not necessarily a cache hit, see the
+table of worst paths). req2resp is the part of in2out from the request inputs to the response outputs of a cache controller:
+its combinational hit path (PF-01); it is never the limiting class. 'depth' is the number of combinational cells on the worst path of the limiting class, buffers
+included. Hold slack is the worst over all hold checks. Power is OpenSTA's static estimate at its default switching
+activity, not a simulation-driven figure (PW-01).
 
 ## Raw netlists of the default flow (`abc -fast`: no buffering, no sizing)
 
-| point | module | status | cells | area (um^2) | min period (ns) | Fmax (MHz) | limiting class | depth | reg2reg | in2reg | reg2out | in2out | reset net, unbuffered (ns) | worst hold slack (ns) | power (mW) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| reset_sync | reset_sync | ok | 3 | 54 | 0.638 | 1567.4 | reg2out | 0 | 0.450 | - | 0.638 | - | 0.157 (fan-out 2) | 0.331 | 0.008 |
-| arbiter | l1_l2_arbiter | ok | 108 | 1,026 | 7.001 | 142.8 | in2out | 2 | 6.398 | 6.448 | 6.952 | 7.001 | 0.264 (fan-out 3) | 0.449 | 0.240 |
-| adapter | l2_l3_width_adapter | ok | 800 | 3,323 | 5.454 | 183.4 | in2out | 1 | - | - | - | 5.454 | - | 0.553 | 0.268 |
-| l1_icache | l1_icache_ctrl | ok | 162,596 | 1,455,566 | 51.524 | 19.4 | in2reg | 16 | 35.302 | 51.524 | 24.468 | 50.672 | 31.681 (fan-out 133) | 0.428 | 246.000 |
+| point | module | status | cells | area (um^2) | min period (ns) | Fmax (MHz) | limiting class | depth | reg2reg | in2reg | reg2out | in2out | req2resp | reset net, unbuffered (ns) | worst hold slack (ns) | power (mW) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| reset_sync | reset_sync | ok | 3 | 54 | 0.638 | 1567.4 | reg2out | 0 | 0.450 | - | 0.638 | - | - | 0.157 (fan-out 2) | 0.331 | 0.008 |
+| arbiter | l1_l2_arbiter | ok | 108 | 1,026 | 7.001 | 142.8 | in2out | 2 | 6.398 | 6.448 | 6.952 | 7.001 | - | 0.264 (fan-out 3) | 0.449 | 0.240 |
+| adapter | l2_l3_width_adapter | ok | 800 | 3,323 | 5.454 | 183.4 | in2out | 1 | - | - | - | 5.454 | - | - | 0.553 | 0.268 |
+| l1_icache | l1_icache_ctrl | ok | 162,596 | 1,455,566 | 51.524 | 19.4 | in2reg | 16 | 35.302 | 51.524 | 24.468 | 50.672 | 50.672 | 31.681 (fan-out 133) | 0.428 | 246.000 |
 
 ## Default configuration, timing-driven mapping
 
-| point | module | status | cells | area (um^2) | min period (ns) | Fmax (MHz) | limiting class | depth | reg2reg | in2reg | reg2out | in2out | reset net, unbuffered (ns) | worst hold slack (ns) | power (mW) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| reset_sync_speed | reset_sync | ok | 3 | 54 | 0.638 | 1567.4 | reg2out | 0 | 0.450 | - | 0.638 | - | 0.157 (fan-out 2) | 0.331 | 0.008 |
-| arbiter_speed | l1_l2_arbiter | ok | 95 | 1,041 | 1.859 | 537.9 | reg2out | 4 | 1.782 | 1.748 | 1.859 | 1.766 | 0.264 (fan-out 3) | 0.517 | 0.236 |
-| adapter_speed | l2_l3_width_adapter | ok | 316 | 3,332 | 1.446 | 691.6 | in2out | 3 | - | - | - | 1.446 | - | 0.553 | 0.316 |
-| axi4_engine_speed | axi4_fill_engine | ok | 3,791 | 35,425 | 2.495 | 400.8 | reg2reg | 7 | 2.495 | 1.628 | 2.425 | - | 1.649 (fan-out 7) | 0.481 | 14.200 |
-| l1_icache_speed | l1_icache_ctrl | ok | 128,692 | 1,514,111 | 4.171 | 239.8 | reg2out | 16 | 3.240 | 3.775 | 4.171 | 3.973 | 3.871 (fan-out 134) | 0.431 | 227.000 |
-| l1_dcache_speed | l1_dcache_ctrl | ok | 132,737 | 1,548,375 | 5.997 | 166.8 | in2reg | 25 | 5.111 | 5.997 | 4.760 | 5.605 | 4.957 (fan-out 135) | 0.427 | 416.000 |
-| l2_default_speed | l2_cache_ctrl | ok | 887,109 | 13,679,955 | 9.168 | 109.1 | in2reg | 34 | 7.661 | 9.168 | 6.019 | 7.315 | 27.889 (fan-out 1796) | 0.416 | 2110.000 |
-| l3_32k_w8_speed | l3_cache_ctrl | ok | 1,146,921 | 12,663,505 | 8.366 | 119.5 | in2reg | 32 | 7.686 | 8.366 | 6.202 | 7.028 | 15.032 (fan-out 965) | 0.418 | 1980.000 |
+| point | module | status | cells | area (um^2) | min period (ns) | Fmax (MHz) | limiting class | depth | reg2reg | in2reg | reg2out | in2out | req2resp | reset net, unbuffered (ns) | worst hold slack (ns) | power (mW) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| reset_sync_speed | reset_sync | ok | 3 | 54 | 0.638 | 1567.4 | reg2out | 0 | 0.450 | - | 0.638 | - | - | 0.157 (fan-out 2) | 0.331 | 0.008 |
+| arbiter_speed | l1_l2_arbiter | ok | 95 | 1,041 | 1.859 | 537.9 | reg2out | 4 | 1.782 | 1.748 | 1.859 | 1.766 | - | 0.264 (fan-out 3) | 0.517 | 0.236 |
+| adapter_speed | l2_l3_width_adapter | ok | 316 | 3,332 | 1.446 | 691.6 | in2out | 3 | - | - | - | 1.446 | - | - | 0.553 | 0.316 |
+| axi4_engine_speed | axi4_fill_engine | ok | 3,791 | 35,425 | 2.495 | 400.8 | reg2reg | 7 | 2.495 | 1.628 | 2.425 | - | - | 1.649 (fan-out 7) | 0.481 | 14.200 |
+| l1_icache_speed | l1_icache_ctrl | ok | 128,692 | 1,514,111 | 4.171 | 239.8 | reg2out | 16 | 3.240 | 3.775 | 4.171 | 3.973 | 3.973 | 3.871 (fan-out 134) | 0.431 | 227.000 |
+| l1_dcache_speed | l1_dcache_ctrl | ok | 132,737 | 1,548,375 | 5.929 | 168.7 | in2reg | 23 | 5.043 | 5.929 | 4.760 | 5.605 | 4.673 | 4.957 (fan-out 135) | 0.427 | 416.000 |
+| l2_default_speed | l2_cache_ctrl | ok | 887,109 | 13,679,955 | 9.028 | 110.8 | in2reg | 34 | 7.661 | 9.028 | 6.019 | 7.315 | 7.315 | 27.889 (fan-out 1796) | 0.416 | 2110.000 |
+| l3_32k_w8_speed | l3_cache_ctrl | ok | 1,146,921 | 12,663,505 | 8.274 | 120.9 | in2reg | 32 | 7.686 | 8.274 | 6.202 | 7.028 | 7.028 | 15.032 (fan-out 965) | 0.418 | 1980.000 |
 
 ## Comparison at 8 KiB (the prediction of 03_microarchitecture.md section 5)
 
-| point | module | status | cells | area (um^2) | min period (ns) | Fmax (MHz) | limiting class | depth | reg2reg | in2reg | reg2out | in2out | reset net, unbuffered (ns) | worst hold slack (ns) | power (mW) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| l1_dcache_8k_speed | l1_dcache_ctrl | ok | 260,514 | 3,066,431 | 5.757 | 173.7 | in2reg | 26 | 4.666 | 5.757 | 4.406 | 5.316 | 6.228 (fan-out 265) | 0.427 | 799.000 |
-| l2_8k_w4_speed | l2_cache_ctrl | ok | 226,336 | 3,474,946 | 8.515 | 117.4 | in2reg | 28 | 6.692 | 8.515 | 5.445 | 7.174 | 8.822 (fan-out 453) | 0.416 | 498.000 |
-| l3_8k_w4_speed | l3_cache_ctrl | ok | 293,374 | 3,212,237 | 7.054 | 141.8 | in2reg | 27 | 6.483 | 7.054 | 5.119 | 6.040 | 5.684 (fan-out 229) | 0.418 | 555.000 |
-| l3_8k_w8_speed | l3_cache_ctrl | ok | 293,500 | 3,222,235 | 7.220 | 138.5 | in2reg | 29 | 6.937 | 7.220 | 5.545 | 6.317 | 5.916 (fan-out 245) | 0.418 | 573.000 |
+| point | module | status | cells | area (um^2) | min period (ns) | Fmax (MHz) | limiting class | depth | reg2reg | in2reg | reg2out | in2out | req2resp | reset net, unbuffered (ns) | worst hold slack (ns) | power (mW) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| l1_dcache_8k_speed | l1_dcache_ctrl | ok | 260,514 | 3,066,431 | 5.545 | 180.3 | in2reg | 25 | 4.454 | 5.545 | 4.406 | 5.316 | 4.292 | 6.228 (fan-out 265) | 0.427 | 799.000 |
+| l2_8k_w4_speed | l2_cache_ctrl | ok | 226,336 | 3,474,946 | 8.514 | 117.5 | in2reg | 28 | 6.692 | 8.514 | 5.445 | 7.172 | 7.172 | 8.822 (fan-out 453) | 0.416 | 498.000 |
+| l3_8k_w4_speed | l3_cache_ctrl | ok | 293,374 | 3,212,237 | 7.052 | 141.8 | in2reg | 27 | 6.483 | 7.052 | 5.119 | 6.040 | 6.040 | 5.684 (fan-out 229) | 0.418 | 555.000 |
+| l3_8k_w8_speed | l3_cache_ctrl | ok | 293,500 | 3,222,235 | 7.220 | 138.5 | in2reg | 29 | 6.937 | 7.220 | 5.545 | 6.317 | 6.317 | 5.916 (fan-out 245) | 0.418 | 573.000 |
+
+## The worst path of each class
+
+Start point -> end point (combinational cells on the path, buffers included). A path from an input to an output is only a
+combinational path through the unit: it is not necessarily a cache hit, and its end point says what it is (a downstream request
+output, a ready signal, ...). req2resp is the part of it that matters for the hit: the worst path from a request input (`req_*`)
+to a response output (`resp_*`), which exists for the four cache controllers. Flip-flop names in the netlists are anonymous
+(`_447803_`).
+
+| point | reg2reg | in2reg | reg2out | in2out | req2resp |
+|---|---|---|---|---|---|
+| reset_sync_speed | _2_ -> _1_ (0) | - | _1_ -> rst_n (0) | - | - |
+| arbiter_speed | _110_ -> _111_ (4) | up0_req_valid -> _111_ (5) | _109_ -> up0_req_ready (4) | up1_req_valid -> up0_req_ready (4) | - |
+| adapter_speed | - | - | - | l2_req_addr[5] -> l2_resp_line[110] (3) | - |
+| axi4_engine_speed | _6376_ -> _6924_ (7) | req_valid -> _6560_ (6) | _6924_ -> wdata[10] (4) | - | - |
+| l1_icache_speed | _221726_ -> _186262_ (10) | req_addr[5] -> _221752_ (19) | _221729_ -> resp_rdata[28] (16) | req_addr[5] -> resp_valid (18) | req_addr[5] -> resp_valid (18) |
+| l1_dcache_speed | _194677_ -> _200617_ (19) | req_addr[11] -> _200617_ (23) | _229742_ -> resp_rdata[10] (12) | req_addr[11] -> dn_req_addr[4] (21) | req_addr[11] -> resp_rdata[17] (18) |
+| l2_default_speed | _1319013_ -> _1314322_ (23) | req_addr[5] -> _1204658_ (34) | _1338457_ -> resp_line[228] (23) | req_addr[5] -> resp_line[228] (29) | req_addr[5] -> resp_line[228] (29) |
+| l3_32k_w8_speed | _2011396_ -> _1751554_ (26) | req_addr[6] -> _1783227_ (32) | _1981970_ -> resp_line[50] (22) | req_addr[7] -> resp_line[146] (25) | req_addr[7] -> resp_line[146] (25) |
+| l1_dcache_8k_speed | _384131_ -> _415171_ (20) | req_addr[6] -> _415171_ (25) | _450096_ -> resp_rdata[17] (11) | req_addr[6] -> dn_req_addr[3] (22) | req_addr[11] -> resp_rdata[10] (16) |
+| l2_8k_w4_speed | _320391_ -> _309064_ (26) | req_addr[6] -> _317733_ (28) | _320391_ -> resp_line[64] (20) | req_addr[6] -> resp_valid (21) | req_addr[6] -> resp_valid (21) |
+| l3_8k_w4_speed | _488493_ -> _492013_ (20) | req_addr[6] -> _447713_ (27) | _489724_ -> resp_line[191] (17) | req_addr[7] -> resp_line[191] (20) | req_addr[7] -> resp_line[191] (20) |
+| l3_8k_w8_speed | _491352_ -> _446790_ (20) | req_addr[7] -> _447803_ (29) | _491437_ -> resp_line[0] (20) | req_addr[7] -> resp_line[0] (23) | req_addr[7] -> resp_line[0] (23) |
 
 ## Where the limiting path's time goes
 
 The worst path of the limiting class of each timing-driven point, from its `timing.txt`: time in fan-out buffers (`buf` and
 `clkbuf` cells), in multiplexers, in other logic, and in the launching flip-flop's clock-to-output (zero for an input path).
-The rest of the period is the input delay, the capture flip-flop's setup time and slack. ABC's `buffer -c` builds a serial chain
-of fan-out buffers, not a balanced tree (a net of 1,000 loads needs about three levels of fan-out 10, not 12 to 17), so the
-last column, the minimum period with every fan-out buffer free, is a bound that nothing can reach and not an estimate: a
-real tree costs something. It shows how much of the period the buffering accounts for.
+The rest of the period is the input delay, the capture flip-flop's setup time and slack. 'buffer runs' lists the runs of
+consecutive buffers along the path in path order: (number of buffers, their summed delay in ns). The table says how many
+buffers a path contains and how much time they take; it does not say what a run fans out to. The depth counts every
+combinational cell on the path, buffers included.
 
-| point | limiting class | min period (ns) | buffers (ns) | buffer cells | multiplexers (ns) | other logic (ns) | clock-to-output (ns) | period with buffers free (bound, ns) |
-|---|---|---|---|---|---|---|---|---|
-| reset_sync_speed | reg2out | 0.638 | 0.00 | 0 | 0.00 | 0.00 | 0.49 | 0.64 |
-| arbiter_speed | reg2out | 1.859 | 0.29 | 2 | 0.00 | 0.90 | 0.52 | 1.57 |
-| adapter_speed | in2out | 1.446 | 0.36 | 2 | 0.43 | 0.00 | 0.00 | 1.08 |
-| axi4_engine_speed | reg2reg | 2.495 | 0.30 | 2 | 0.33 | 1.41 | 0.34 | 2.20 |
-| l1_icache_speed | reg2out | 4.171 | 1.06 | 5 | 0.71 | 1.96 | 0.28 | 3.11 |
-| l1_dcache_speed | in2reg | 5.997 | 1.45 | 7 | 0.33 | 3.69 | 0.00 | 4.55 |
-| l2_default_speed | in2reg | 9.168 | 4.53 | 17 | 2.10 | 2.05 | 0.00 | 4.64 |
-| l3_32k_w8_speed | in2reg | 8.366 | 4.42 | 17 | 1.49 | 1.96 | 0.00 | 3.94 |
-| l1_dcache_8k_speed | in2reg | 5.757 | 1.58 | 7 | 0.31 | 3.33 | 0.00 | 4.18 |
-| l2_8k_w4_speed | in2reg | 8.515 | 3.96 | 15 | 1.61 | 2.46 | 0.00 | 4.56 |
-| l3_8k_w4_speed | in2reg | 7.054 | 3.64 | 13 | 1.17 | 1.80 | 0.00 | 3.41 |
-| l3_8k_w8_speed | in2reg | 7.220 | 2.96 | 11 | 2.69 | 1.06 | 0.00 | 4.26 |
+| point | limiting class | start -> end | min period (ns) | depth | buffer cells | buffers (ns) | buffer runs: cells (ns) | multiplexers (ns) | other logic (ns) | clock-to-output (ns) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| reset_sync_speed | reg2out | _1_ -> rst_n | 0.638 | 0 | 0 | 0.00 | - | 0.00 | 0.00 | 0.49 |
+| arbiter_speed | reg2out | _109_ -> up0_req_ready | 1.859 | 4 | 2 | 0.29 | 2 (0.29) | 0.00 | 0.90 | 0.52 |
+| adapter_speed | in2out | l2_req_addr[5] -> l2_resp_line[110] | 1.446 | 3 | 2 | 0.36 | 2 (0.36) | 0.43 | 0.00 | 0.00 |
+| axi4_engine_speed | reg2reg | _6376_ -> _6924_ | 2.495 | 7 | 2 | 0.30 | 1 (0.15), 1 (0.15) | 0.33 | 1.41 | 0.34 |
+| l1_icache_speed | reg2out | _221729_ -> resp_rdata[28] | 4.171 | 16 | 5 | 1.06 | 1 (0.15), 2 (0.35), 2 (0.57) | 0.71 | 1.96 | 0.28 |
+| l1_dcache_speed | in2reg | req_addr[11] -> _200617_ | 5.929 | 23 | 6 | 1.40 | 2 (0.34), 1 (0.31), 1 (0.28), 2 (0.47) | 0.34 | 3.66 | 0.00 |
+| l2_default_speed | in2reg | req_addr[5] -> _1204658_ | 9.028 | 34 | 17 | 4.53 | 12 (2.99), 3 (0.80), 2 (0.73) | 2.10 | 1.91 | 0.00 |
+| l3_32k_w8_speed | in2reg | req_addr[6] -> _1783227_ | 8.274 | 32 | 17 | 4.42 | 10 (2.76), 3 (0.62), 4 (1.05) | 1.49 | 1.87 | 0.00 |
+| l1_dcache_8k_speed | in2reg | req_addr[6] -> _415171_ | 5.545 | 25 | 7 | 1.74 | 1 (0.22), 2 (0.59), 1 (0.15), 1 (0.19), 2 (0.58) | 0.33 | 2.94 | 0.00 |
+| l2_8k_w4_speed | in2reg | req_addr[6] -> _317733_ | 8.514 | 28 | 15 | 3.96 | 11 (2.98), 2 (0.31), 2 (0.67) | 1.61 | 2.46 | 0.00 |
+| l3_8k_w4_speed | in2reg | req_addr[6] -> _447713_ | 7.052 | 27 | 13 | 3.64 | 8 (2.34), 1 (0.25), 4 (1.05) | 1.17 | 1.80 | 0.00 |
+| l3_8k_w8_speed | in2reg | req_addr[7] -> _447803_ | 7.220 | 29 | 11 | 2.96 | 4 (1.23), 5 (1.35), 2 (0.37) | 2.69 | 1.06 | 0.00 |
