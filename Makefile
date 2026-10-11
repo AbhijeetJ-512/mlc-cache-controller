@@ -9,12 +9,15 @@
 #   make elab          bad parameter sets must be rejected at elaboration, good ones accepted
 #   make lint          Yosys elaboration check: hierarchy, zero latches and tristates, no synthesis
 #   make top           the integrated top elaborates under Icarus with no warnings and is structural only
+#   make rules         the RTL uses only always_comb and always_ff @(posedge clk ...), so no incomplete sensitivity list or gated clock
 #   make synth-selftest  the synthesis flow's checks reject a latch, a tri-state, a multiply-driven net, a loop, a new warning
 #   make synth         synthesise every unit at its default configuration (Yosys, Sky130HD); minutes to an hour
-#   make synth-gatesim the Tier-1 testbenches that only use ports, run unchanged on the synthesised netlists (after make synth)
+#   make synth-gatesim the Tier-1 testbenches that only use ports, run on the synthesised netlists (after make synth)
+#   make synth-stuckat tie every cell output of the arbiter and adapter netlists to 0 and to 1 and run their testbench (after make synth)
 #   make synth-sweep   the capacity / associativity sweep; about an hour
 #   make synth-l3-default   attempt the default 256 KiB L3; expected to run out of memory on a 15 GiB machine
 #   make synth-abc-compare  L1-D through ABC's full script, to compare with the default fast script
+#   make synth-selftest-deep  delete each check in turn from a copy of synth.tcl: the self-test must fail every time (about 2 min)
 #   make synth-summary rebuild build/reports/summary.md from the reports
 #   make clean         remove build products (the tracked logs in sim/logs/ and build/reports/ are kept)
 #
@@ -181,30 +184,56 @@ top:
 	echo "top: mlc_cache_top elaborates under Icarus -Wall with no warnings (widths and ports checked, nothing simulated)"
 
 # ---- Phase 7: synthesis to Sky130HD (D-037). Not part of `check` except the self-test: the runs take minutes each. ----
-.PHONY: synth synth-sweep synth-l3-default synth-abc-compare synth-selftest synth-summary synth-gatesim
+.PHONY: synth synth-sweep synth-l3-default synth-abc-compare synth-selftest synth-selftest-deep synth-summary synth-gatesim synth-stuckat
+
+# Run every point of one group. A group that is empty or cannot be listed is an error, not a pass: a failing `--group` would
+# otherwise leave the loop with nothing to run and the recipe would report success.
+define run_group
+pts=$$($(SYNTH) --group $(1)) || { echo "synth: cannot list the points of group $(1)"; exit 1; }; \
+[ -n "$$pts" ] || { echo "synth: group $(1) is empty"; exit 1; }; \
+rc=0; for p in $$pts; do $(SYNTH) $$p || rc=1; done
+endef
+
 synth:
-	@rc=0; for p in $$($(SYNTH) --group default); do $(SYNTH) $$p || rc=1; done; \
+	@$(call run_group,default); \
 	$(MAKE) --no-print-directory synth-gatesim || rc=1; \
-	$(MAKE) --no-print-directory synth-summary >/dev/null; \
+	$(MAKE) --no-print-directory synth-summary >/dev/null || rc=1; \
 	if [ $$rc -eq 0 ]; then echo "synth: every default-configuration unit passed; see build/reports/summary.md"; else echo "synth: FAILED"; fi; exit $$rc
 
 synth-sweep:
-	@rc=0; for p in $$($(SYNTH) --group sweep); do $(SYNTH) $$p || rc=1; done; \
-	$(MAKE) --no-print-directory synth-summary >/dev/null; \
+	@$(call run_group,sweep); \
+	$(MAKE) --no-print-directory synth-summary >/dev/null || rc=1; \
 	if [ $$rc -eq 0 ]; then echo "synth-sweep: every sweep point passed; see build/reports/summary.md"; else echo "synth-sweep: FAILED"; fi; exit $$rc
 
 synth-l3-default:
-	@$(SYNTH) l3_default; rc=$$?; $(MAKE) --no-print-directory synth-summary >/dev/null; exit $$rc
+	@rc=0; $(SYNTH) l3_default || rc=1; $(MAKE) --no-print-directory synth-summary >/dev/null || rc=1; exit $$rc
 
 synth-abc-compare:
 	@rc=0; for p in l1_dcache l1_dcache_abcdefault; do $(SYNTH) $$p || rc=1; done; \
-	$(MAKE) --no-print-directory synth-summary >/dev/null; exit $$rc
+	$(MAKE) --no-print-directory synth-summary >/dev/null || rc=1; exit $$rc
 
 synth-gatesim:
-	@rc=0; for p in $$($(SYNTH) --gatesim-points); do $(SYNTH) --gatesim $$p || rc=1; done; exit $$rc
+	@pts=$$($(SYNTH) --gatesim-points) || { echo "synth-gatesim: cannot list the points"; exit 1; }; \
+	[ -n "$$pts" ] || { echo "synth-gatesim: no points"; exit 1; }; \
+	rc=0; for p in $$pts; do $(SYNTH) --gatesim $$p || rc=1; done; exit $$rc
+
+# The "before" run uses the testbenches as merged at the end of Phase 4 (ea1e1ea), to show what they could not see.
+synth-stuckat:
+	@rc=0; for p in $$($(PYTHON) scripts/synth_stuckat.py --points); do \
+	  $(PYTHON) scripts/synth_stuckat.py $$p >/dev/null || rc=1; \
+	  $(PYTHON) scripts/synth_stuckat.py $$p --tb-rev ea1e1ea >/dev/null || rc=1; \
+	  echo "synth-stuckat $$p: $$(grep -E '^(detected|survived)' build/reports/$$p/stuckat.txt | tr '\n' ' ') (before: $$(grep -E '^(detected|survived)' build/reports/$$p/stuckat_before.txt | tr '\n' ' '))"; \
+	done; exit $$rc
+
+.PHONY: rules
+rules:
+	@$(PYTHON) scripts/check_rtl_rules.py && $(PYTHON) scripts/check_rtl_rules.py --selftest
 
 synth-selftest:
-	@$(SYNTH) --selftest && echo "synth-selftest: the flow rejects a latch, a tri-state, a multiply-driven net, a loop and an unlisted warning, and accepts a clean module"
+	@$(SYNTH) --selftest && echo "synth-selftest: each bad module is stopped by the check meant for it, the banned library cells are all covered, and clean modules are accepted"
+
+synth-selftest-deep:
+	@$(SYNTH) --selftest-deletions
 
 synth-summary:
 	@$(PYTHON) scripts/synth_summary.py
@@ -216,6 +245,7 @@ check:
 	echo "== top ==";   $(MAKE) --no-print-directory top  || rc=1; \
 	echo "== sim ==";   $(MAKE) --no-print-directory sim  || rc=1; \
 	echo "== lint ==";  $(MAKE) --no-print-directory lint || rc=1; \
+	echo "== rules ==";  $(MAKE) --no-print-directory rules || rc=1; \
 	echo "== synth-selftest =="; $(MAKE) --no-print-directory synth-selftest || rc=1; \
 	if [ $$rc -eq 0 ]; then echo "check: PASSED"; else echo "check: FAILED"; fi; exit $$rc
 
