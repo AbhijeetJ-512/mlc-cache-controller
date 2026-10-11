@@ -159,6 +159,12 @@ def dont_use_lib():
     return marked
 
 
+def ensure_dont_use_lib():
+    """The dont_use copy of the liberty, made again when it is missing or older than the liberty it is a copy of."""
+    if not DONT_USE_LIB.exists() or DONT_USE_LIB.stat().st_mtime < LIB.stat().st_mtime:
+        dont_use_lib()
+
+
 def package_copy(name, overrides):
     """Copy of mlc_pkg.sv with the given localparams changed. Fails unless each name is found exactly once."""
     text = (ROOT / PKG).read_text()
@@ -185,8 +191,7 @@ def run_yosys(name, spec, out_dir, work_dir, srcs, cap_kib, extra_env=None):
         SYNTH_ABC=spec["abc"],
     )
     if spec["abc"] == "speed":
-        if not DONT_USE_LIB.exists():
-            dont_use_lib()
+        ensure_dont_use_lib()
         env.update(SYNTH_ABC_LIB=str(DONT_USE_LIB), SYNTH_ABC_SCRIPT=str(ABC_SCRIPT), SYNTH_ABC_CONSTR=str(ABC_CONSTR))
     if name in GATESIM or spec["abc"] == "speed":
         NETLISTS.mkdir(parents=True, exist_ok=True)

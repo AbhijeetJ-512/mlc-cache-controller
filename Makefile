@@ -21,7 +21,8 @@
 #   make synth-timing  timing-driven mapping of the default configuration and the 8 KiB comparison points (about an hour)
 #   make sta           OpenSTA on those netlists and on four raw ones; Fmax, critical paths, power (after make synth and make synth-timing)
 #   make sta-sensitivity  minimum period at three settings of the boundary delays, on four cheap points
-#   make sta-selftest  STA known answers (feed-through, inverter delay from the liberty) and cases it must refuse
+#   make sta-selftest  STA known answers (feed-through, inverter delay, the SDC's constants, each class of path) and cases it must refuse
+#   make sta-selftest-deep  break the timing flow about sixty ways, one per copy; the self-test must notice each
 #   make synth-summary rebuild build/reports/summary.md from the reports
 #   make clean         remove build products (the tracked logs in sim/logs/ and build/reports/ are kept)
 #
@@ -255,14 +256,18 @@ pts=$$($(STA) --group $(1)) || { echo "sta: cannot list the points of group $(1)
 for p in $$pts; do $(STA) $$p || rc=1; done
 endef
 
-.PHONY: synth-timing sta sta-selftest sta-summary sta-sensitivity
+.PHONY: synth-timing sta sta-selftest sta-selftest-deep sta-summary sta-sensitivity
 sta:
 	@rc=0; $(call run_sta_group,raw); $(call run_sta_group,timing); $(call run_sta_group,timing-compare); \
 	$(MAKE) --no-print-directory sta-summary >/dev/null || rc=1; \
 	if [ $$rc -eq 0 ]; then echo "sta: every point analysed; see build/reports/timing_summary.md"; else echo "sta: FAILED"; fi; exit $$rc
 
 sta-selftest:
-	@$(STA) --selftest && echo "sta-selftest: known answers agree with the liberty tables, and a loop, an unconstrained output and a missing clock are refused"
+	@$(STA) --selftest && echo "sta-selftest: known answers agree with the liberty tables, the SDC applies the constants it claims, the classes of path and the reset classes find the paths built for them, and a loop, an unconstrained output, a missing clock and a stale netlist are refused"
+
+# Break the timing flow in about sixty ways, one per copy, and require its self-test to notice each (D-043; writes build/reports/sta_selftest_deep.txt).
+sta-selftest-deep:
+	@$(PYTHON) scripts/sta_mutation.py
 
 # How much the one assumption of constraints/mlc.sdc (the boundary delays) matters, on the cheap points.
 sta-sensitivity:

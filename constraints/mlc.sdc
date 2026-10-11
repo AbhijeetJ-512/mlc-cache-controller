@@ -17,10 +17,18 @@
 # The reset ports. rst_n (and async_rst_n in reset_sync) drive every flip-flop's asynchronous reset pin directly, so the input net
 # has a fan-out of up to about 1,800 and nothing in this flow buffers it: ABC buffers only the logic it maps, and the reset pins
 # are not part of that logic. P&R builds the reset tree (Phase 9), and in the integrated design the port is the output of
-# reset_sync's flip-flop. So in the main analysis every path that starts at a reset port is a false path (STA_RESET_FALSE_PATH=1,
-# the default), and the reset network is analysed on its own with STA_RESET_ONLY=1 (see scripts/sta.tcl), its unbuffered delay and
-# fan-out recorded as a separate figure. This removes the recovery, removal and rst_n-to-output checks from the minimum period;
-# the real tree adds an estimated few buffer levels, which are not in the figure.
+# reset_sync's flip-flop. So in the main analysis (STA_RESET_FALSE_PATH=1, the default) EVERY path that starts at a reset port is
+# a false path: the recovery and removal checks at the reset pins, rst_n to a flip-flop's D through logic, and rst_n to an
+# output. The reset network is analysed on its own with STA_RESET_ONLY=1 (see scripts/sta.tcl), its unbuffered delay and fan-out
+# recorded as a separate figure in three classes (reset_async, reset_data, reset2out). The real tree adds an estimated few
+# buffer levels, which are not in the figure.
+#
+# A false path removes the check but not the slew: OpenSTA still propagates the worst slew arriving at each pin, whatever the
+# exceptions. A reset port driven by an inv_2 through an unbuffered net of 1,800 loads arrives at its sinks with a slew of several
+# nanoseconds, and a gate that takes rst_n on one pin and a data signal on another would pass that slew on to the data path
+# (independent review of Phase 8, finding F1: a nor2 on the L2 limiting path). So in the main analysis the reset ports have an
+# ideal input transition and no driving cell; in the reset-only analysis they are driven like every other input, because the
+# unbuffered figure is what that analysis measures.
 
 proc env_or {name default} {
     if {[info exists ::env($name)] && $::env($name) ne ""} { return $::env($name) }
@@ -40,10 +48,6 @@ if {[llength $clk_port] > 0} {
     create_clock -name clk -period $period
     set data_inputs [all_inputs]
 }
-set_input_delay  $in_delay  -clock clk $data_inputs
-set_output_delay $out_delay -clock clk [all_outputs]
-set_driving_cell -lib_cell sky130_fd_sc_hd__inv_2 $data_inputs
-set_load 0.033442 [all_outputs]
 
 # the reset INPUT ports (reset_sync has rst_n as an output, which is not a start point)
 proc reset_input_ports {} {
@@ -54,6 +58,20 @@ proc reset_input_ports {} {
     return $found
 }
 set reset_ports [reset_input_ports]
-if {[llength $reset_ports] > 0 && [env_or STA_RESET_FALSE_PATH 1] eq "1"} {
+set reset_names {}
+foreach p $reset_ports { lappend reset_names [get_name $p] }
+set reset_false [expr {[env_or STA_RESET_FALSE_PATH 1] eq "1"}]
+
+set_input_delay  $in_delay  -clock clk $data_inputs
+set_output_delay $out_delay -clock clk [all_outputs]
+set driven {}
+foreach p $data_inputs {
+    if {!$reset_false || [get_name $p] ni $reset_names} { lappend driven $p }
+}
+if {[llength $driven] > 0} { set_driving_cell -lib_cell sky130_fd_sc_hd__inv_2 $driven }
+set_load 0.033442 [all_outputs]
+
+if {$reset_false && [llength $reset_ports] > 0} {
+    set_input_transition 0 $reset_ports
     set_false_path -from $reset_ports
 }

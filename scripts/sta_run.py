@@ -38,7 +38,16 @@ SCRIPT = ROOT / "scripts" / "sta.tcl"
 SDC = ROOT / "constraints" / "mlc.sdc"
 BASE_PERIOD_NS = 10.0
 BRACKET = 0.02
+# The boundary assumptions of constraints/mlc.sdc and scripts/abc_speed.constr, written here once more so that the self-test can
+# compare what the SDC really applies with what the reports say it applied (sta_selftest.py, `write_sdc`).
+IN_DELAY_NS = 0.35
+OUT_DELAY_NS = 0.15
+LOAD_PF = 0.033442
+DRIVE_CELL = "sky130_fd_sc_hd__inv_2"
 CLASSES = ["reg2reg", "in2reg", "reg2out", "in2out"]
+# req2resp is a part of in2out (request inputs req_* to response outputs resp_* of a cache controller: its combinational hit path), so it is
+# reported beside the four classes and never decides the limiting class
+SUBCLASSES = ["req2resp"]
 RESET_CLASSES = ["reset_async", "reset_data", "reset2out"]
 
 # Points analysed: the netlists of `make synth-timing` (timing-driven mapping), and the four default-flow netlists that
@@ -47,6 +56,9 @@ RAW = ["reset_sync", "arbiter", "adapter", "l1_icache"]
 POINTS = {name: dict(netlist=name, top=synth_run.POINTS[name]["top"], groups=("raw",)) for name in RAW}
 for name in synth_run.SPEED_POINTS:
     POINTS[name] = dict(netlist=name, top=synth_run.POINTS[name]["top"], groups=synth_run.POINTS[name]["groups"])
+
+
+WALL = [0.0]  # seconds spent in OpenSTA since the last reset; run_point reads it for the total of one point
 
 
 def run_sta(netlist, top, period, out_dir, work_dir, sdc=SDC, extra_env=None, lib=LIB):
@@ -59,7 +71,9 @@ def run_sta(netlist, top, period, out_dir, work_dir, sdc=SDC, extra_env=None, li
     env.update(extra_env or {})
     t0 = time.monotonic()
     p = subprocess.run(["sta", "-no_splash", "-exit", str(SCRIPT)], cwd=ROOT, env=env, capture_output=True, text=True)
-    return p.returncode, p.stdout + "\n" + p.stderr, resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss, time.monotonic() - t0
+    wall = time.monotonic() - t0
+    WALL[0] += wall
+    return p.returncode, p.stdout + "\n" + p.stderr, resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss, wall
 
 
 def log_problems(text):
@@ -117,13 +131,61 @@ def composition(block):
     return buf, mux, other, clkq, nbuf
 
 
+def buffer_runs(block):
+    """Runs of consecutive fan-out buffers (buf and clkbuf cells) along a path, in path order, as [(number of buffers, ns)]."""
+    data = block.split("data arrival time")[0]
+    runs, n, t = [], 0, 0.0
+    for m in CELL_LINE.finditer(data):
+        delay, kind = float(m.group(1)), m.group(2)
+        if kind in ("buf", "clkbuf"):
+            n, t = n + 1, t + delay
+        elif n:
+            runs.append((n, t))
+            n, t = 0, 0.0
+    if n:
+        runs.append((n, t))
+    return runs
+
+
 def endpoints(block):
     s = re.search(r"^Startpoint: (\S+)", block, re.M)
     e = re.search(r"^Endpoint: (\S+)", block, re.M)
     return (s.group(1) if s else "-", e.group(1) if e else "-")
 
 
-def analyse(timing_text, period, classes=CLASSES):
+RESET_FANOUT = re.compile(r"^\s*(\d+)\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\^v]\s+\S+\s+\(in\)", re.M)
+
+
+def reset_fanout(block):
+    """Fan-out of the input port a path starts at, from the 'Fanout' column of the report (the reset net's loads), or None."""
+    m = RESET_FANOUT.search(block)
+    return int(m.group(1)) if m else None
+
+
+def stale_inputs(netlist, inputs):
+    """The files among `inputs` that are newer than the netlist, i.e. that the netlist was not made from. Files that do not exist are skipped."""
+    t = netlist.stat().st_mtime
+    return [f for f in inputs if f.exists() and f.stat().st_mtime > t]
+
+
+def netlist_inputs(name):
+    """Everything a point's netlist is made from: its RTL, the synthesis script and the liberty; for the timing-driven points also the
+    ABC script, its constraints and the liberty copy with the dont_use cells."""
+    files = [ROOT / f for f in synth_run.POINTS[name]["srcs"]] + [ROOT / "scripts" / "synth.tcl", LIB]
+    if name in synth_run.SPEED_POINTS:
+        files += [synth_run.ABC_SCRIPT, synth_run.ABC_CONSTR, synth_run.DONT_USE_LIB]
+    return files
+
+
+def require_fresh(name, net):
+    """Stop when the netlist of a point is older than anything it is made from: its timing would not be the timing of the current design."""
+    stale = stale_inputs(net, netlist_inputs(name))
+    if stale:
+        raise SystemExit("sta_run: %s is older than %s; run `%s` again" % (
+            net, ", ".join(str(f.relative_to(ROOT)) for f in stale), "make synth-timing" if name in synth_run.SPEED_POINTS else "make synth"))
+
+
+def analyse(timing_text, period, classes=CLASSES + SUBCLASSES):
     """The numbers of one STA run: per class the smallest period it needs, depth and endpoints, hold slack, overall setup slack."""
     sec = sections(timing_text)
     info = {}
@@ -132,11 +194,30 @@ def analyse(timing_text, period, classes=CLASSES):
         h = worst_path(sec.get(cls + " min", ""))
         if w:
             info[cls] = dict(slack=w[0], need=period - w[0], depth=logic_depth(w[1]), start=endpoints(w[1])[0], end=endpoints(w[1])[1],
-                             hold=(h[0] if h else None), comp=composition(w[1]))
+                             hold=(h[0] if h else None), comp=composition(w[1]), runs=buffer_runs(w[1]))
     # the overall report has one path per group (clk and asynchronous); take the worst of them
     all_max = [float(m.group(1)) for m in SLACK.finditer(sec.get("overall max", ""))]
     all_min = [float(m.group(1)) for m in SLACK.finditer(sec.get("overall min", ""))]
     return info, (min(all_max) if all_max else None), (min(all_min) if all_min else None)
+
+
+def class_consistency(info, tmin, tol=0.0015):
+    """None when the worst class of path needs the minimum period of the overall report, else the reason it does not. The classes and
+    the overall report are separate OpenSTA queries; if they disagree, the 'limiting class' of the summary would be wrong."""
+    need = max(i["need"] for i in info.values())
+    if abs(need - tmin) > tol:
+        return "worst class needs %.3f ns but the overall report needs %.3f ns" % (need, tmin)
+    return None
+
+
+def analyse_reset(rtext):
+    """The reset-only analysis: per reset class (reset_async, reset_data, reset2out) the period it needs, its path and the fan-out of
+    the reset port's net, from the text of its timing.txt."""
+    reset, _, _ = analyse(rtext, BASE_PERIOD_NS, RESET_CLASSES)
+    for cls, i in reset.items():
+        blk = worst_path(sections(rtext).get(cls + " max", ""))
+        i["fanout"] = reset_fanout(blk[1]) if blk else None
+    return reset
 
 
 def bracket_check(net, top, tmin, work_dir, sdc=SDC):
@@ -156,69 +237,73 @@ def bracket_check(net, top, tmin, work_dir, sdc=SDC):
     return why == "-", "; ".join(verdicts), why
 
 
+def measure(net, top, out_dir, work_dir):
+    """The OpenSTA runs behind one point's figures: the base run, the reset-only run and the two runs of the 2% bracket. Returns a dict
+    with status and reason, the per-class results (info), the worst setup and hold slack of the base run, the reset classes, the
+    minimum period tmin and the text of the bracket. Writes timing.txt, power.txt and reset.txt into out_dir."""
+    r = dict(status="ok", reason="-", info={}, worst_setup=None, worst_hold=None, reset={}, tmin=None, bracket="-")
+    rc, text, r["peak"], r["wall"] = run_sta(net, top, BASE_PERIOD_NS, out_dir, work_dir)
+    problems = log_problems(text)
+    if rc != 0 or problems:
+        r["status"], r["reason"] = "failed", ("sta exit status %d" % rc) if rc else "sta printed: " + " | ".join(problems[:3])
+        return r
+    r["info"], r["worst_setup"], r["worst_hold"] = analyse((out_dir / "timing.txt").read_text(), BASE_PERIOD_NS)
+
+    # The reset network on its own, unbuffered (the main analysis treats paths from the reset ports as false paths: constraints/mlc.sdc)
+    rc3, text3, _, _ = run_sta(net, top, BASE_PERIOD_NS, work_dir / "reset", work_dir, extra_env={"STA_RESET_ONLY": "1", "STA_RESET_FALSE_PATH": "0"})
+    if rc3 != 0 or log_problems(text3):
+        r["status"], r["reason"] = "failed", "reset-only run failed"
+        return r
+    rtext = (work_dir / "reset" / "timing.txt").read_text()
+    (out_dir / "reset.txt").write_text(rtext)
+    r["reset"] = analyse_reset(rtext)
+
+    if r["worst_setup"] is None or not r["info"]:
+        r["status"], r["reason"] = "failed", "no setup paths were reported"
+        return r
+    r["tmin"] = tmin = BASE_PERIOD_NS - r["worst_setup"]
+    # the per-class reports and the overall report are two separate OpenSTA queries: the worst class must be the worst path
+    mismatch = class_consistency(r["info"], tmin)
+    if mismatch:
+        r["status"], r["reason"] = "failed", mismatch
+        return r
+    ok, r["bracket"], failed_at = bracket_check(net, top, tmin, work_dir)
+    if not ok:
+        r["status"], r["reason"] = "failed", failed_at
+    return r
+
+
 def run_point(name):
     spec = POINTS[name]
     net = NETLISTS / (spec["netlist"] + ".v")
     if not net.exists():
         raise SystemExit("sta_run: %s does not exist; run `make synth-timing` (or `make synth` for the raw points) first" % net)
-    stale = [f for f in (ROOT / "scripts" / "synth.tcl", ROOT / "scripts" / "abc_speed.script") if f.stat().st_mtime > net.stat().st_mtime]
-    if stale and spec["netlist"] in synth_run.SPEED_POINTS:
-        raise SystemExit("sta_run: %s is older than %s; run `make synth-timing` again" % (net, stale[0].name))
+    require_fresh(name, net)
     out_dir = REPORTS / name
     work_dir = WORK / name / "sta"
-    for f in ("timing.txt", "power.txt", "sta.txt"):
+    # sensitivity.txt belongs to the constraints of the run that wrote it: remove it, `make sta-sensitivity` writes it again
+    for f in ("timing.txt", "power.txt", "sta.txt", "reset.txt", "sensitivity.txt"):
         (out_dir / f).unlink(missing_ok=True)
-    lines, status, reason = [], "ok", "-"
-
-    rc, text, peak, wall = run_sta(net, spec["top"], BASE_PERIOD_NS, out_dir, work_dir)
-    problems = log_problems(text)
-    if rc != 0 or problems:
-        status, reason = "failed", ("sta exit status %d" % rc) if rc else "sta printed: " + " | ".join(problems[:3])
-        info, worst_setup, worst_hold = {}, None, None
-    else:
-        info, worst_setup, worst_hold = analyse((out_dir / "timing.txt").read_text(), BASE_PERIOD_NS)
-
-    # The reset network on its own, unbuffered (the main analysis treats paths from the reset ports as false paths: constraints/mlc.sdc)
-    reset = {}
-    if status == "ok":
-        rc3, text3, _, _ = run_sta(net, spec["top"], BASE_PERIOD_NS, work_dir / "reset", work_dir,
-                                   extra_env={"STA_RESET_ONLY": "1", "STA_RESET_FALSE_PATH": "0"})
-        if rc3 != 0 or log_problems(text3):
-            status, reason = "failed", "reset-only run failed"
-        else:
-            rtext = (work_dir / "reset" / "timing.txt").read_text()
-            (out_dir / "reset.txt").write_text(rtext)
-            reset, _, _ = analyse(rtext, BASE_PERIOD_NS, RESET_CLASSES)
-            for cls, i in reset.items():
-                blk = worst_path(sections(rtext).get(cls + " max", ""))
-                m = re.search(r"^\s*(\d+)\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\^v]\s+\S+\s+\(in\)", blk[1], re.M) if blk else None
-                i["fanout"] = int(m.group(1)) if m else None
-
-    tmin = None
-    bracket = "-"
-    if status == "ok":
-        if worst_setup is None or not info:
-            status, reason = "failed", "no setup paths were reported"
-        else:
-            tmin = BASE_PERIOD_NS - worst_setup
-            ok, bracket, failed_at = bracket_check(net, spec["top"], tmin, work_dir)
-            if not ok:
-                status, reason = "failed", failed_at
+    WALL[0] = 0.0
+    m = measure(net, spec["top"], out_dir, work_dir)
+    status, reason, info, worst_setup, worst_hold = m["status"], m["reason"], m["info"], m["worst_setup"], m["worst_hold"]
+    reset, tmin, bracket, peak, wall = m["reset"], m["tmin"], m["bracket"], m["peak"], m["wall"]
+    lines = []
 
     power = "-"
     pw = out_dir / "power.txt"
     if pw.exists():
-        m = re.search(r"^Total\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)", pw.read_text(), re.M)
-        power = m.group(4) if m else "-"
+        pm = re.search(r"^Total\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)", pw.read_text(), re.M)
+        power = pm.group(4) if pm else "-"
 
     lines += [("point", name), ("top", spec["top"]), ("netlist", "build/netlists/%s.v" % spec["netlist"]),
               ("status", status), ("reason", reason), ("base_period_ns", "%.3f" % BASE_PERIOD_NS),
-              ("input_delay_ns", "0.35"), ("output_delay_ns", "0.15")]
+              ("input_delay_ns", "%.2f" % IN_DELAY_NS), ("output_delay_ns", "%.2f" % OUT_DELAY_NS)]
     if tmin is not None:
         lines += [("min_period_ns", "%.3f" % tmin), ("fmax_mhz", "%.1f" % (1000.0 / tmin)),
                   ("worst_setup_slack_at_base_ns", "%.3f" % worst_setup),
                   ("worst_hold_slack_ns", "%.3f" % worst_hold if worst_hold is not None else "-"), ("bracket", bracket)]
-        for cls in CLASSES:
+        for cls in CLASSES + SUBCLASSES:
             if cls in info:
                 i = info[cls]
                 lines += [("%s_min_period_ns" % cls, "%.3f" % i["need"]), ("%s_depth" % cls, str(i["depth"])),
@@ -232,7 +317,8 @@ def run_point(name):
                 lines += [("%s_min_period_ns" % cls, "%.3f" % reset[cls]["need"]), ("%s_path" % cls, "%s -> %s" % (reset[cls]["start"], reset[cls]["end"]))]
     else:
         lines += [("reset_unbuffered_min_period_ns", "-"), ("reset_net_fanout", "-")]
-    lines += [("total_power_w", power), ("wall_seconds", "%.0f" % wall), ("peak_rss_kib", str(peak)),
+    lines += [("total_power_w", power), ("wall_seconds_base_run", "%.0f" % wall), ("wall_seconds_total", "%.0f" % WALL[0]),
+              ("peak_rss_kib", str(peak)),
               ("sta", subprocess.run(["sta", "-version"], capture_output=True, text=True).stdout.strip() or "OpenSTA")]
     (out_dir).mkdir(parents=True, exist_ok=True)
     (out_dir / "sta.txt").write_text("".join("%s: %s\n" % kv for kv in lines))
@@ -251,6 +337,7 @@ def sensitivity(name):
     if not net.exists():
         raise SystemExit("sta_run: %s does not exist" % net)
     work_dir = WORK / name / "sta_sens"
+    (REPORTS / name / "sensitivity.txt").unlink(missing_ok=True)
     lines = []
     for din, dout in SENSITIVITY:
         rc, text, _, _ = run_sta(net, spec["top"], BASE_PERIOD_NS, work_dir / ("d%g_%g" % (din, dout)), work_dir,
@@ -258,7 +345,7 @@ def sensitivity(name):
         if rc != 0 or log_problems(text):
             raise SystemExit("sta_run: sensitivity run %g/%g failed" % (din, dout))
         info, setup, hold = analyse((work_dir / ("d%g_%g" % (din, dout)) / "timing.txt").read_text(), BASE_PERIOD_NS)
-        need = {c: info[c]["need"] for c in CLASSES if c in info}
+        need = {c: info[c]["need"] for c in CLASSES + SUBCLASSES if c in info}
         lines.append("input %.2f ns, output %.2f ns: min period %.3f ns, worst hold slack %s, per class %s" % (
             din, dout, BASE_PERIOD_NS - setup, ("%.3f" % hold) if hold is not None else "-",
             ", ".join("%s %.3f" % (c, v) for c, v in need.items())))
