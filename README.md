@@ -9,8 +9,8 @@ memory-side interface. Synthesis, STA, and place-and-route all target **Sky130HD
 > **Project status: Phase 7 of 12 (Phases 5 and 6, the UVM tier and the formal properties, are deferred at the project
 > owner's request) — every unit is built and Tier-1-verified, the units are wired into one IP, and each unit has been
 > synthesized to Sky130HD.** `make check` runs the parameter guards, a structural check of the top, 13 Tier-1 testbenches
-> (592 checks, logs checked in under `sim/logs/`), the Yosys elaboration check and the synthesis flow's self-test, all passing, in about
-> three minutes (190 s on the last run; 187 to 214 s across runs). `make synth` and `make synth-sweep` map every unit at its default
+> (594 checks, logs checked in under `sim/logs/`), the Yosys elaboration check, an RTL coding-rule check and the synthesis flow's self-test, all
+> passing, in about three and a half minutes (219 s on the last run; 187 to 219 s across runs). `make synth` and `make synth-sweep` map every unit at its default
 > configuration and at 11 sweep points to Sky130HD with zero latches, tri-states, undriven or multiply-driven nets or unlisted
 > warnings; the results are in [`build/reports/summary.md`](build/reports/summary.md). **Two things were not synthesized:
 > the default 256 KiB L3 (it ran out of memory under a 12,000,000 KiB cap, so its area is NOT MEASURED; L3 is measured up to 32 KiB)
@@ -113,18 +113,21 @@ make list              # the registered testbenches
 make elab              # bad parameter sets are rejected, good ones accepted (about 30 s)
 make top               # mlc_cache_top is structural only and elaborates under Icarus -Wall with no warnings (under 1 s)
 make lint              # Yosys elaboration check, zero latches/tristates (about 170 s)
-make synth-selftest    # the synthesis flow's own checks can fail (part of make check, a few seconds)
+make rules             # rtl/ uses only always_comb and always_ff @(posedge clk ...): no incomplete sensitivity list, no gated clock
+make synth-selftest    # each of the synthesis flow's checks stops the module built to break it (part of make check, about 10 s)
 make clean             # remove build products; the tracked logs in sim/logs/ and build/reports/ stay
 ```
 
-Synthesis is separate from `make check` because it takes tens of minutes (it needs about 9.5 GiB of memory for its largest point):
+Synthesis is separate from `make check` because it takes tens of minutes (it needs 9.4 GiB of memory for its largest point):
 
 ```bash
-make synth             # every unit at its default configuration, then the gate-level re-runs (about 25 min)
-make synth-sweep       # the 11-point capacity / associativity sweep (about 50 min)
-make synth-l3-default  # attempt the default 256 KiB L3; records an out-of-memory result (about 4 min)
-make synth-abc-compare # the L1-D through ABC's full script, to compare with the fast one (about 9 min)
+make synth             # every unit at its default configuration (24 min of synthesis), then the gate-level re-runs
+make synth-sweep       # the 11-point capacity / associativity sweep (56 min)
+make synth-l3-default  # attempt the default 256 KiB L3; records an out-of-memory result (4 min)
+make synth-abc-compare # the L1-D through ABC's full script, to compare with the fast one (9 min)
 make synth-gatesim     # the four Tier-1 tests that use only ports, run on the synthesized netlists (needs make synth first)
+make synth-stuckat     # tie every cell output of the arbiter and adapter netlists to 0 and 1 and run their tests (needs make synth first)
+make synth-selftest-deep  # break each of the flow's checks in turn in a copy; the self-test must notice every time (2 min)
 ```
 
 A test passes only if its simulation exits cleanly, prints no `FAIL` line, and prints at least one
@@ -147,7 +150,7 @@ at the typical corner.
 | L1 to L2 arbiter | 1,026 | 108 | 3 |
 | AXI4 fill engine | 36,102 | 5,511 | 554 |
 | Reset synchroniser | 54 | 3 | 2 |
-| **L3, 256 KiB 8-way (default)** | **NOT MEASURED: out of memory under a 12,000,000 KiB cap after 223 s** | | |
+| **L3, 256 KiB 8-way (default)** | **NOT MEASURED: out of memory under a 12,000,000 KiB cap after 252 s** | | |
 
 What the numbers say, and what they do not:
 
@@ -155,12 +158,12 @@ What the numbers say, and what they do not:
   number of stored bits plus 35 to 856 control flip-flops at every cache point, so the arrays are intact, and flip-flops are only
   37 to 49% of the area; the rest is the write-enable and read multiplexing around them. A design built on SRAM macros would look
   different, and no figure for one is claimed here.
-- Area follows capacity: L2 is 3,830,397, 7,608,102 and 15,047,108 um^2 at 8, 16 and 32 KiB. Associativity costs little: L2 at 32 KiB
+- Area follows capacity: L2 is 3,829,883, 7,608,102 and 15,047,108 um^2 at 8, 16 and 32 KiB. Associativity costs little: L2 at 32 KiB
   is 14,997,923, 15,047,108 and 15,071,885 um^2 at 2, 4 and 8 ways.
-- The flow's cost is part of the result. The default L2 takes about nine minutes and 9 GiB; peak memory doubles with each doubling of capacity.
+- The flow's cost is part of the result. The default L2 takes just under ten minutes and 9 GiB; for L2 and for L3, peak memory doubles with each doubling of capacity (2.3, 4.5 and 9.0 GiB at 8, 16 and 32 KiB).
 - Not synthesized: the default L3 (above) and the integrated top, which is wiring only. No whole-hierarchy area is claimed.
 - Timing, power and place-and-route are **NOT YET MEASURED** (Phases 8 and 9).
-- The four unit testbenches that use only ports (`reset_sync`, L1-I, the adapter, the arbiter) also pass, unchanged, on the synthesized
+- The four unit testbenches that use only ports (`reset_sync`, L1-I, the adapter, the arbiter) also pass, with the same testbench files, on the synthesized
   netlists. The other four units (L1-D, L2, L3, the AXI4 engine) have testbenches that read internal state and have **no gate-level evidence**.
 
 ## Verification: split by test level, not just by tool

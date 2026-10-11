@@ -1640,23 +1640,39 @@ stops with an error when the RTL has a latch, a tri-state driver, an undriven or
 For the technology mapping, ABC's full script against `abc -fast`. In a scratch run of an earlier version of the flow (with
 `synth`'s own ABC pass left on) the full script was still inside ABC on the default L2 after 18 minutes, when I stopped it; that
 run is not reproduced by a checked-in report. The comparison that is checked in is the L1-D through both, in the final flow
-(`make synth-abc-compare`, reports `l1_dcache` and `l1_dcache_abcdefault`): fast 134 s, 1,496,114 um^2, 166,059 cells; full
-379 s, 1,511,346 um^2, 133,309 cells.
+(`make synth-abc-compare`, reports `l1_dcache` and `l1_dcache_abcdefault`): fast 147 s, 1,496,114 um^2, 166,059 cells; full
+419 s, 1,511,346 um^2, 133,309 cells.
 
-**Decision.** `scripts/synth.tcl`: read the liberty as a cell library (`read_liberty -lib`; without it `check` reports every
-mapped cell's output as undriven), read the sources, `hierarchy -check -top` with `-chparam` overrides, `proc` and `tribuf`,
-`synth -flatten -noabc`, `dfflibmap`, `abc -fast`, `hilomap` to `conb_1` tie cells (as in `Full-Adder`), then `stat -liberty`.
-Seven assertions each stop the run and each passed one is written to `checks.txt`: no tri-state in the RTL; `check -assert` after
-generic synthesis; no latch after generic synthesis; `check -assert` on the mapped netlist; no cell left that is not a library
-cell; no tri-state cell; no latch or clock-gate cell. `scripts/synth_run.py` sets a 12,000,000 KiB address-space cap, runs the
-script, and fails the run on any log line containing "warning" or "error" that is not on a whitelist of five patterns:
-the liberty reader skipping the scan and enable flip-flop functions it cannot parse, "Replacing memory ... with list of
-registers" (every array becomes one flip-flop per bit), ABC's note about multi-output gates, ABC's "network is combinational"
-(full script only) and Yosys's own count of these.
+**Decision.** `scripts/synth.tcl` reads the sources, runs `hierarchy -check -top` with the `-chparam` overrides, and only then reads
+the liberty as a cell library (`read_liberty -lib`). After the RTL, so that a library cell instantiated in the RTL is an unknown
+module and `hierarchy -check` refuses it (SR-05); as a library, because without it `check` reports every mapped cell's output as
+undriven. Then `proc`, `tribuf`, `synth -flatten -noabc`, `dfflibmap`, `abc -fast`, `hilomap` to `conb_1` tie cells (as in
+`Full-Adder`) and `stat -liberty`. Nine named checks each stop the run, and each passed one is written to `checks.txt`:
+- in the RTL: no black box; no tri-state driver; no undriven or multiply-driven net and no combinational loop (this one runs
+  before `synth`, because `synth`'s opt passes replace an undriven net by `x`, after which `check` no longer sees it);
+- after generic synthesis: the same net-and-loop check (a loop through two levels of hierarchy shows only once the design is
+  flattened), and no latch;
+- on the mapped netlist: `check -assert`; no cell that is not a Sky130HD library cell (`select t:* t:sky130_fd_sc_hd__* %d`, so a
+  black box or a leftover Yosys cell counts); no tri-state cell; no latch or clock-gate cell.
 
-**Reason.** Fast ABC is 2.8 times quicker on the L1-D and its area is 1.0% smaller, so it costs nothing in area here; it finishes
-the default L2 in under ten minutes where the full script had not in eighteen. Every stage that could hide a fault has an
-assertion, so a run that reaches the end has the properties SR-02, SR-03 and SR-06 ask for.
+Each check prints its name before it runs, so the last name with no "passed" line after it says which check stopped a run;
+`run.txt` records it. `scripts/synth_run.py` sets a 12,000,000 KiB address-space cap, runs the script, and fails the run on any log
+line containing "warning" or "error" that is not on a whitelist of five patterns: the liberty reader skipping the scan and enable
+flip-flop functions it cannot parse, "Replacing memory ... with list of registers" (every array becomes one flip-flop per bit),
+ABC's note about multi-output gates, ABC's "network is combinational" (full script only) and Yosys's own count of these. That log
+check is also what catches a constant `z` (Yosys warns that it has only limited support for tri-states) and a port resized by a
+connection.
+
+**What the flow does not check.** Yosys 0.33 prints no warning for an assignment that truncates inside a module, nor for an
+incomplete sensitivity list, so the flow cannot see either. `make rules` (`scripts/check_rtl_rules.py`, part of `make check`)
+closes the second, and the question of a clock gated by ordinary gates, for this RTL, by allowing only `always_comb` and
+`always_ff @(posedge clk ...)` (it finds 7 `always_ff` blocks in 12 files and no violation). Truncation inside a module stays
+unchecked, so SR-03 is met in part: multiple drivers, undriven nets and port-width mismatches are caught. Clock gating built from
+ordinary gates is excluded by that rule, not by the flow.
+
+**Reason.** Fast ABC is 2.9 times quicker on the L1-D and its area is 1.0% smaller, so it costs nothing in area here; it finishes
+the default L2 in just under ten minutes where the full script had not in eighteen. Every stage that could hide a fault has a named
+check, and the self-test below ties each bad module to the one check meant to stop it.
 
 **Tradeoffs.**
 - Cell counts differ by 25% between the two ABC modes (fast uses more, smaller cells) while the area differs by 1%, so a cell count
@@ -1664,18 +1680,26 @@ assertion, so a run that reaches the end has the properties SR-02, SR-03 and SR-
 - `abc -fast` is a lower-effort mapping: Phase 8's timing will describe this netlist, not the best one ABC could build.
 - The liberty reader skips the scan and enable flip-flops, so every stored bit is a plain D flip-flop and a multiplexer for its
   write enable. That is part of why flip-flops are only 37 to 49% of the area (D-038).
-- Three `lpflow_inputiso0p_1` cells (low-power-flow isolation gates) appear in each L1 netlist, 3 of 162,596 and 3 of 166,059
-  cells. This machine's platform file excludes only two probe cells and Yosys 0.33's `abc` has no `-dont_use`, so excluding the
-  `lpflow` cells would need a filtered copy of the liberty. Not done; a later phase may.
+- A few `lpflow_*` cells (low-power-flow isolation gates) appear in some netlists (3 in each of the two default L1 netlists, 1 in each of the L1-D netlists at 2 and 8 KiB, 2 in the 32 KiB 8-way L2, and 11 in the L1-D mapped by ABC's full script). This machine's platform file
+  excludes only two probe cells and Yosys 0.33's `abc` has no `-dont_use`, so excluding them would need a filtered copy of the
+  liberty. Not done; a later phase may.
 - The script is `synth.tcl` and not the `synth.ys` the plan named.
 
-**Result.** `make synth-selftest` (also run by `make check`) shows the checks can fail. A clean counter and a clean register array
-(which triggers the whitelisted memory warning) are accepted. A latch, a tri-state, a net with two drivers, a combinational loop
-and a module that makes Yosys print an unlisted warning are each rejected, and for each the log shows the intended check was the
-one that stopped it. The three assertions on the mapped netlist cannot be reached by those modules, because an earlier assertion
-catches the same fault first, so for them the test checks the patterns: all 13 library-cell names they use are real cells (editing
-one to a misspelling makes the test fail) and `t:$*` matches generic cells. Six cases check the classification of a run as ok,
-out-of-memory or failed.
+**Result.** `make synth-selftest` (also run by `make check`) has these cases, each tied to the named check or log text that must
+stop it:
+- accepted: a clean counter, and a clean register array (which triggers the whitelisted memory warning);
+- RTL rejected, by the check named: a latch; a tri-state mux; a net with two drivers; a combinational loop; an undriven output; a
+  black box; and, by the log text: a library cell instantiated in the RTL (`hierarchy -check`), a constant `z`, and a module that
+  makes Yosys print an unlisted warning. A loop through two levels of hierarchy is stopped only by the check after generic synthesis;
+- mapped-netlist checks, which RTL that Yosys will synthesise cannot reach, are run on hand-made netlists in `SYNTH_PREMAPPED`
+  mode: a clean one is accepted, and one instance of a latch, of `lpflow_inputisolatch`, of a clock gate, of a tri-state buffer and
+  of a tri-state inverter, a user module left in the netlist, and a net with two drivers are each stopped by the intended check;
+- all 37 latch, tri-state and clock-gate cells in the liberty (18, 13 and 6, found by scanning the liberty) are matched by a pattern in
+  the checks that forbid them, and every pattern matches a real cell;
+- six cases check the classification of a run as ok, out-of-memory or failed.
+
+Deleting any one of the nine checks from a copy of `synth.tcl` makes the self-test fail (9 of 9; the independent review found
+that 2 of 9 were noticed before this was rebuilt around named checks). `make synth-selftest-deep` repeats that experiment.
 
 ---
 
@@ -1688,9 +1712,10 @@ has no memory macros, so every array bit is a flip-flop and a multiplexer, and t
 times what the default L2 does.
 
 **Measured.** Peak memory of Yosys doubles with each doubling of capacity: L2 at 8, 16 and 32 KiB (4-way) 2.30, 4.53 and 9.01 GiB;
-L3 at 8, 16 and 32 KiB (8-way) 2.33, 4.58 and 9.11 GiB. The default L3, run with a 12,000,000 KiB address-space cap
-(`make synth-l3-default`), ran out of memory after 223 s with a peak of 11.42 GiB, inside generic synthesis, before any
-technology mapping (`build/reports/l3_default/`; `checks.txt` shows only the first assertion had passed). Whether it would
+L3 at 8, 16 and 32 KiB (8-way) 2.33, 4.58 and 9.10 GiB. The default L3, run with a 12,000,000 KiB address-space cap
+(`make synth-l3-default`), ran out of memory after 252 s with a peak of 11.05 GiB, inside generic synthesis, before any
+technology mapping (`build/reports/l3_default/`: `checks.txt` shows the three checks on the RTL had passed, and `run.txt` records that
+it stopped in the FSM-extraction pass of `synth`). The peak read at the moment of the failure varied from 11.05 to 11.42 GiB over three runs, all at the cap. Whether it would
 finish with more memory is **NOT MEASURED**; the doubling would put it near eight times the 9 GiB of the 32 KiB points, which is an
 extrapolation from the measured points and not a measurement.
 
@@ -1732,11 +1757,11 @@ extrapolation from the measured points and not a measurement.
 - *The arrays are intact.* Flip-flops minus the bits the architecture stores (data, tags, valid, and dirty and PLRU state for
   L2 and L3, computed from the parameters) is between 35 and 856 at every cache point, so the control state is a few hundred
   flip-flops and nothing was optimised away or mis-sized.
-- *Area follows capacity.* L1-D 757,474, 1,496,114 and 2,910,894 at 2, 4 and 8 KiB; L2 3,830,397, 7,608,102 and 15,047,108 at 8, 16 and
+- *Area follows capacity.* L1-D 757,474, 1,496,114 and 2,910,894 at 2, 4 and 8 KiB; L2 3,829,883, 7,608,102 and 15,047,108 at 8, 16 and
   32 KiB.
 - *Associativity costs little.* L2 at 32 KiB: 14,997,923, 15,047,108 and 15,071,885 at 2, 4 and 8 ways, that is +0.33% and then +0.16%.
   L3 at 32 KiB: 14,687,824 at 4 ways and 14,710,293 at 8 ways, +0.15%. The extra comparators and PLRU state are small next to the storage.
-- *Flip-flops are less than half the area.* 48 to 49% in L1, 38% in L2 and 37% in L3 (cell areas from the liberty); the rest is the
+- *Flip-flops are less than half the area.* 47 to 49% in L1, 38% in L2 and 37% in L3 (cell areas from the liberty); the rest is the
   write-enable and read multiplexing around each stored bit.
 - OQ-4 is resolved (no for the default L3, yes for everything else) and R5 occurred; both are updated in the requirements and the plan.
 - AR-02 (tag and valid versus data area) and AR-03 (true LRU against PLRU) are still **NOT YET MEASURED**: after flattening, the
@@ -1750,38 +1775,92 @@ extrapolation from the measured points and not a measurement.
 
 **Problem.** Synthesis checks (D-037) say nothing about whether the netlist still does what the RTL does.
 
-**Decision.** `make synth-gatesim` (part of `make synth`) runs four unit testbenches, the very same files that run on the RTL, on the synthesized netlists:
-`tb_reset_sync`, `tb_l1_icache`, `tb_adapter` and `tb_arbiter`. The cell models are made by Yosys from the liberty's own functions, so
-this checks that mapping kept the behaviour; it does not check the liberty. A run passes only if it has the same number of checks
-as the RTL run, and it refuses a netlist older than the RTL. The other four units' testbenches (L1-D, L2, L3, the AXI4 engine) read
-internal state (`dut.state`, `dut.dirty_array`, ...), which a netlist does not have, so **those four units have no gate-level
-evidence**.
+**Decision.** `make synth-gatesim` (part of `make synth`) runs four unit testbenches, the very same files that run on the RTL, on the
+synthesized netlists: `tb_reset_sync`, `tb_l1_icache`, `tb_adapter` and `tb_arbiter`. The cell models are made by Yosys from the
+liberty's own functions, so this checks that mapping kept the behaviour; it does not check the liberty. A run passes only if it has
+the same number of checks as the RTL run. It refuses a netlist older than the RTL or than `scripts/synth.tcl`, and a re-synthesis first
+deletes the old netlist and the old `gatesim.txt`. The other four units' testbenches (L1-D, L2, L3, the AXI4 engine) read internal state
+(`dut.state`, `dut.dirty_array`, ...), which a netlist does not have, so **those four units have no gate-level evidence**.
+
+`make synth-stuckat` (`scripts/synth_stuckat.py`) measures how much of a unit's netlist the testbench can see. A fault is a cell
+output pin tied to 0 or to 1, one at a time; the unit's testbench is run on each faulty netlist and a fault is detected when it
+fails, hangs or passes a different number of checks. A fault that gives a tie cell the constant it already drives changes nothing
+and is counted separately, not simulated. It is run for the arbiter and the adapter, once with the testbench as it is
+and once with the testbench as merged at the end of Phase 4 (`ea1e1ea`); the reports are `build/reports/<unit>/stuckat.txt` and
+`stuckat_before.txt`.
 
 **What it found.**
 1. *`tb_l1_icache` failed on the netlist* (it read `x` for the first fetch, then stale zeros). Not a synthesis fault: with a 1 ns
    wait before the testbench samples, the same netlist passes with every flip-flop left at `x`. The testbench read `resp_rdata`
    in the time step in which `resp_valid` rose, and on a netlist the data trails the valid by a few delta cycles. The testbench now
    waits 1 ns.
-2. *A stuck-at campaign shows two testbenches never gave a bit-wide path both values.* Every cell output of the netlist was tied to
-   0, then to 1, one cell at a time, and the unit's testbench run on each mutant (a scratch script, not in the repository; the
-   survivors were read by hand). On the arbiter 177 of 216 mutants were detected: the survivors were 37 of the
-   multiplexers of the address, write data, strobes and write-enable paths stuck at 0 (the testbench only ever sent a few
-   patterns), and two inverters. One of the two, in the term that holds the arbiter busy until the owner is ready, still survived
-   the data-pattern fix, because only requester 0 had a late-`resp_ready` scenario. On the
-   adapter 1,213 of 1,600 were detected: its 256 two-way multiplexers need each half to be 1 while the other is 0, under both
-   selects. The RTL-level mutation testing of D-036 swapped whole multiplexers and never saw either gap.
-3. *The fixes only add scenarios.* `tb_arbiter` 38 to 45 checks (every bit 1 and 0 from either side; requester 1 taking its
-   response late), `tb_adapter` 35 to 39 (each half all ones against all zeros under both selects). With them the campaign detects
-   216 of 216 and 1,600 of 1,600. The 53 RTL mutants of the arbiter that were run in Phase 4 give the same result as then: 45
-   detected, and the 8 that survive are the equivalent mutants D-036 already lists.
+2. *Two testbenches never gave a bit-wide path both values.* Arbiter, Phase 4 testbench (38 checks): of 216 faults, 177 detected and
+   39 survived. The survivors were stuck-at-0 faults on 19 bits of `l2_req_addr` and 18 bits of `l2_req_wdata` (the multiplexers; the
+   testbench only ever sent a few address and data patterns) and on two inverters. One of the two, in the term that holds the arbiter
+   busy until the owner is ready, still survived the data-pattern fix, because only requester 0 had a late-`resp_ready` scenario.
+   Adapter, Phase 4 testbench (35 checks): of 1,600 faults, 32 change nothing (tie-high cells tied to 1, the write strobes) and of
+   the 1,568 that do, 1,181 were detected and 387 survived: its 256 two-way multiplexers need each half to be 1 while the other is
+   0, under both selects. The RTL-level mutation testing of D-036 swapped whole multiplexers and never saw either gap.
+3. *The fixes only add scenarios.* `tb_arbiter` 38 to 45 checks (every bit 1 and 0 from either side; requester 1 taking its response
+   late), `tb_adapter` 35 to 39 (each half all ones against all zeros under both selects), and 41 after the review (D-040). With
+   them 216 of 216 arbiter faults and 1,568 of 1,568 adapter faults are detected. The Phase 4 RTL mutants of the arbiter (20 of
+   mine and the reviewer's 33; scratch scripts, not in the repository, as in D-036) were re-run: 45 of 53 are detected, the same as
+   then, and the 8 survivors are the equivalent mutants D-036 already lists.
+4. *A correction.* The first campaign was a scratch script and reported 1,213 of 1,600 for the old adapter test. It counted the 32
+   no-op faults as detected (it removed the tie cell, leaving its net undriven, which fails any test). The in-repository script
+   treats them separately, which is why the figures above are 1,181 of 1,568. The independent review (D-040) found this.
 
 **Not done.** A campaign on the L1-I netlist (162,596 cells): its testbench uses a few of the 128 sets, so most faults in
 the storage cells would survive by construction, and finding them is a memory-test job, not a functional one.
 
-**Result.** The four gate-level re-runs pass with the same check counts as the RTL runs (4, 4, 39 and 45). `make check` passes: 13 of 13
-testbenches, 592 checks (581 before; 7 more in `tb_arbiter`, 4 more in `tb_adapter`), the new synthesis self-test, 190 s on this run.
-The whole of `make synth` took 1,273 s of synthesis plus the gate-level runs, and `make synth-sweep` 3,070 s, on a machine that was also
-running other work; wall times vary by roughly 5 to 10% from run to run (the default L2 took 549 s in an earlier run and 514 s in the checked-in one).
+**Result.** The four gate-level re-runs pass with the same check counts as the RTL runs (4, 4, 41 and 45). `make check` passes: 13 of 13
+testbenches, 594 checks (581 before; 7 more in `tb_arbiter`, 6 more in `tb_adapter`), the new synthesis self-test and RTL rules, in 219 s
+on the last run. `make synth` took 1,438 s of synthesis (24 minutes) plus the gate-level runs and `make synth-sweep` 3,343 s (56 minutes), on
+a machine that was also running other work; wall times vary by roughly 5 to 10% from run to run (the default L2 took 549 s, 514 s,
+and 586 s in three runs; only the last is checked in).
+
+---
+
+## D-040 — The independent review of Phase 7: what it found and what was done about each
+
+**2026-10-11 · Phase 7**
+
+**Problem.** Before anything was pushed, an independent reviewer (a separate agent on the most capable model, in its own worktree)
+read the new scripts, recomputed every figure in the reports and documents, ran `make check`, attacked the flow with 28 bad or edge
+modules, attacked the testbenches with 62 RTL mutants of its own, and ran its own full stuck-at campaign. My own checks had found
+none of what follows.
+
+**What held up.** Every area, cell count, flip-flop count, percentage, ratio and run time in `summary.md` and the documents matched
+the reports; the stored-bits model matched `02_architecture.md` by hand for L1 and L2 and L3; the parameter overrides really apply;
+re-running four small points gave byte-identical reports; `make check` passed (592 checks, 216 s on its run). Of its 62 RTL mutants
+53 were detected; of the 9 survivors, 7 are equivalent (4 strictly, 3 only under the protocol L2 keeps) and 2 were a real gap in
+`tb_adapter` (below).
+
+**Findings and what was done.**
+
+| # | Finding | Done |
+|---|---|---|
+| 1 | `check -assert` after generic synthesis cannot see an undriven net (`synth`'s opt turns it into `x` first), yet `checks.txt` said it checked that. Three undriven cases passed all seven checks and were stopped only by the log scan | A `check -assert` now runs on the RTL before `synth`; the self-test has an undriven-output case bound to it |
+| 2 | The library-cell check (`t:$*`) accepted a user black box and an RTL-instantiated library cell; the latch pattern list missed `lpflow_inputisolatch` | The liberty is read after the RTL so a library cell in the RTL is refused; a black-box check; the cell check is now `t:* t:sky130_fd_sc_hd__* %d`; the pattern is added, and the self-test checks all 37 latch, tri-state and clock-gate cells in the liberty against the patterns |
+| 3 | The self-test would still pass with most checks deleted (only 2 of 9 deletions were noticed); its needles also matched other checks | Every case is bound to the one named check that must stop it; the mapped-netlist checks are run on hand-made netlists in `SYNTH_PREMAPPED` mode; `make synth-selftest-deep` deletes and neutralises each check in turn (18 of 18 variants noticed, and each neutralised check makes exactly the cases bound to it go wrong) |
+| 4 | The adapter's "1,600 of 1,600" was impossible: 32 faults are no-ops, and the scratch script had counted them as detected; the arbiter survivors were on address and write data, not strobes and write enable | The campaign is now `scripts/synth_stuckat.py` with checked-in reports, before and after; D-039 is corrected |
+| 5 | `make synth`, `synth-sweep` and `synth-gatesim` reported success when no point ran or the summary failed | Empty or unlistable groups fail; the summary's status is kept; checked with `SYNTH=false` |
+| 6 | `tb_adapter` never gave the write-back data both values (bit 6 of every byte was always 1), so a masked or forced bit survived | Two checks added (all ones, all zeros); both of the reviewer's mutants and two of mine are detected |
+| 7 | "SR-03 met" overclaimed: Yosys 0.33 warns on neither assignment truncation inside a module nor an incomplete sensitivity list | `make rules` (`scripts/check_rtl_rules.py`, in `make check`) allows only `always_comb` and `always_ff @(posedge clk ...)`, which also covers gated clocks; truncation inside a module is stated as not checked, and SR-03 as met in part |
+| 8 | A re-run left the old `gatesim.txt` and netlist behind, and `--gatesim` compared only RTL times | A re-run deletes them; `--gatesim` also compares against `synth.tcl` |
+| 9 | Figures with nothing checked in behind them (the stuck-at counts, the 53-mutant result, "18 minutes", timings) | Stuck-at reports are checked in; the mutant result and the 18 minutes are labelled scratch observations; the run times quoted are from the reports |
+| 10 | Inconsistent figures: "9.5 GiB" (largest is 9.36), "doubles with each doubling" (not for L1), "48 to 49%" (47), "three lpflow cells in each L1 netlist" (varies), the out-of-memory verdict described as `bad_alloc`, D-038 cited for D-039 in comments | All corrected against the final reports |
+| 11 | The out-of-memory verdict is a heuristic (Tcl exception message plus a peak within 10% of the cap) | Stated as such; `run.txt` now also records the last Yosys pass and the last log line of any run that did not pass (for the default L3: the FSM-extraction pass) |
+| 12 | `scripts/__pycache__/` not ignored | Ignored |
+
+The reviewer's runs also rewrote some report files in the main working tree (timings, and one half-written point); they were restored
+from git and every report was then regenerated with the fixed flow.
+
+**Not changed.** Truncation inside a module is still unchecked (finding 7). The out-of-memory verdict remains a heuristic.
+
+**Result.** All reports are regenerated by the fixed flow. Areas and cell counts are identical to the first run except one point:
+`l2_8k_w4` is 3,829,883 um^2 and 568,380 cells, against 3,830,397 and 568,274 before, because the liberty is now read after the RTL.
+`make check` passes with 594 checks in 219 s.
 
 ---
 
