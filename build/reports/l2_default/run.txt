@@ -5,8 +5,8 @@ package_overrides: (none)
 abc: fast
 status: ok
 reason: -
-wall_seconds: 514
-peak_rss_kib: 9452792
+wall_seconds: 586
+peak_rss_kib: 9451800
 mem_cap_kib: 12000000
 yosys: Yosys 0.33 (git sha1 2584903a060)
 liberty_sha256: 92eb4e93a3d4c2563018ac81cdec2f02fdeaced9b39337ed5c141fa63e0ad8f8

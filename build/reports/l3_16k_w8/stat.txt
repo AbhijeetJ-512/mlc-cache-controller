@@ -1,5 +1,5 @@
 
-18. Printing statistics.
+19. Printing statistics.
 
 === l3_cache_ctrl ===
 

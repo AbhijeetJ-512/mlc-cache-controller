@@ -1,0 +1,15 @@
+point: arbiter
+testbench: tb_arbiter as at git revision ea1e1ea
+checks on the fault-free netlist: 38
+cells: 108
+faults (output pin x stuck value): 216
+no-op faults, not simulated (a tie cell tied to its own constant): 0
+faults that change the circuit and were simulated: 216
+detected: 177
+survived: 39
+survivors by kind: 2 x clkinv_1.Y stuck-at-0
+survivors by kind: 37 x mux2_2.X stuck-at-0
+survivors by net: 1 x _005_
+survivors by net: 1 x _020_
+survivors by net: 19 x l2_req_addr
+survivors by net: 18 x l2_req_wdata

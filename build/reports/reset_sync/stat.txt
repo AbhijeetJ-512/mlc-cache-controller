@@ -1,5 +1,5 @@
 
-15. Printing statistics.
+16. Printing statistics.
 
 === reset_sync ===
 

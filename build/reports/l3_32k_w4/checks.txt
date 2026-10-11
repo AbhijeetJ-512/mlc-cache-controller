@@ -1,5 +1,7 @@
+no black box in the RTL (SR-05)
 no tri-state driver in the RTL (SR-02)
-check -assert after generic synthesis: no undriven or multiply-driven net, no combinational loop (SR-03, SR-06)
+no undriven or multiply-driven net and no combinational loop in the RTL (SR-03, SR-06)
+no undriven or multiply-driven net and no combinational loop after generic synthesis (SR-03, SR-06)
 no latch after generic synthesis (SR-02)
 check -assert on the mapped netlist (SR-03, SR-06)
 every cell is a Sky130HD library cell (SR-05)

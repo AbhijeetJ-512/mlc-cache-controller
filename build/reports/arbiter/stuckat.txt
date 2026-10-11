@@ -1,0 +1,9 @@
+point: arbiter
+testbench: tb_arbiter (working tree)
+checks on the fault-free netlist: 45
+cells: 108
+faults (output pin x stuck value): 216
+no-op faults, not simulated (a tie cell tied to its own constant): 0
+faults that change the circuit and were simulated: 216
+detected: 216
+survived: 0
