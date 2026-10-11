@@ -7,7 +7,8 @@
     synth_run.py --selftest       prove the flow's checks can fail (D-037): bad modules must be rejected, good ones accepted
     synth_run.py --selftest-deletions  delete each check from a copy of synth.tcl; the self-test must fail every time (D-040)
     synth_run.py --gatesim POINT  run the unit's Tier-1 testbench, unchanged, on its synthesised netlist (D-039)
-    synth_run.py --gatesim-points print the points that have such a testbench
+    synth_run.py --gatesim-points [speed]   print the points that have such a testbench (the timing-driven ones with `speed`)
+    synth_run.py --dont-use-lib   (re)write build/lib/sky130hd_tt_dontuse.lib, the liberty the timing-driven mapping reads
 
 A point is a top module, the source files it needs, optional overrides of the top's parameters (Yosys chparam) and
 optional overrides of mlc_pkg localparams (for L1, whose sizes are package constants and not module parameters), plus the
@@ -32,6 +33,9 @@ SCRIPT = ROOT / "scripts" / "synth.tcl"
 REPORTS = ROOT / "build" / "reports"
 WORK = ROOT / "build" / "work"
 SELFTEST_DIR = ROOT / "scripts" / "synth_selftest"
+ABC_SCRIPT = ROOT / "scripts" / "abc_speed.script"
+ABC_CONSTR = ROOT / "scripts" / "abc_speed.constr"
+DONT_USE_LIB = ROOT / "build" / "lib" / "sky130hd_tt_dontuse.lib"
 
 # One address space limit for every run (KiB). A run that needs more stops with an out-of-memory error instead of pushing the
 # machine into swap. The development machine has 15 GiB of RAM; the largest point that completes peaks at 9.4 GiB.
@@ -57,6 +61,11 @@ GATESIM = {
     "l1_icache": ("tb_l1_icache", [PKG, "sim/tb_l1_icache.sv", "sim/l1_downstream_stub.sv"]),
     "adapter": ("tb_adapter", [PKG, "sim/tb_adapter.sv"]),
     "arbiter": ("tb_arbiter", [PKG, "sim/tb_arbiter.sv"]),
+    # the same testbenches on the timing-driven mappings (buffered and resized netlists)
+    "reset_sync_speed": ("tb_reset_sync", ["sim/tb_reset_sync.sv"]),
+    "l1_icache_speed": ("tb_l1_icache", [PKG, "sim/tb_l1_icache.sv", "sim/l1_downstream_stub.sv"]),
+    "adapter_speed": ("tb_adapter", [PKG, "sim/tb_adapter.sv"]),
+    "arbiter_speed": ("tb_arbiter", [PKG, "sim/tb_arbiter.sv"]),
 }
 
 
@@ -95,7 +104,23 @@ POINTS = {
     "l3_default": point("l3_cache_ctrl", "l3", groups=["l3-default"], oom=True),
     # The same L1-D as `l1_dcache` through ABC's full script, to measure what `abc -fast` costs in area (D-037).
     "l1_dcache_abcdefault": point("l1_dcache_ctrl", "l1", abc="default", groups=["abc-compare"]),
+    # Timing-driven mapping (D-041), for static timing analysis. Same units as above, mapped for delay with buffering and sizing.
+    "reset_sync_speed": point("reset_sync", "reset_sync", abc="speed", groups=["timing"]),
+    "arbiter_speed": point("l1_l2_arbiter", "arbiter", abc="speed", groups=["timing"]),
+    "adapter_speed": point("l2_l3_width_adapter", "adapter", abc="speed", groups=["timing"]),
+    "axi4_engine_speed": point("axi4_fill_engine", "engine", abc="speed", groups=["timing"]),
+    "l1_icache_speed": point("l1_icache_ctrl", "l1", abc="speed", groups=["timing"]),
+    "l1_dcache_speed": point("l1_dcache_ctrl", "l1", abc="speed", groups=["timing"]),
+    "l2_default_speed": point("l2_cache_ctrl", "l2", abc="speed", groups=["timing"]),
+    "l3_32k_w8_speed": point("l3_cache_ctrl", "l3", "CAPACITY_B=32768 WAYS=8", abc="speed", groups=["timing"]),
+    # The four points that test the prediction of 03_microarchitecture.md section 5 (L3 8-way slower than L2 4-way slower than L1
+    # direct-mapped) at one capacity, 8 KiB. The rest of the capacity / associativity sweep is Phase 10.
+    "l1_dcache_8k_speed": point("l1_dcache_ctrl", "l1", pkg={"L1_CAPACITY_B": 8192}, abc="speed", groups=["timing-compare"]),
+    "l2_8k_w4_speed": point("l2_cache_ctrl", "l2", "CAPACITY_B=8192 WAYS=4", abc="speed", groups=["timing-compare"]),
+    "l3_8k_w4_speed": point("l3_cache_ctrl", "l3", "CAPACITY_B=8192 WAYS=4", abc="speed", groups=["timing-compare"]),
+    "l3_8k_w8_speed": point("l3_cache_ctrl", "l3", "CAPACITY_B=8192 WAYS=8", abc="speed", groups=["timing-compare"]),
 }
+SPEED_POINTS = [n for n, sp in POINTS.items() if sp["abc"] == "speed"]
 
 # Warnings the flow is known to print and that do not bear on SR-03. Anything else in the log fails the run.
 WARNING_OK = [
@@ -118,6 +143,20 @@ def unexpected_warnings(log_text):
         if re.search(r"warning|error", line, re.IGNORECASE) and not any(p.match(line) for p in WARNING_OK):
             bad.append(line)
     return bad
+
+
+def dont_use_lib():
+    """A copy of the liberty with `dont_use : true` on the low-power-flow (lpflow) and probe cells, which the timing-driven mapping
+    must not choose as ordinary buffers and gates. ABC honours the attribute (measured: the lpflow cells go from 11 to 0 on the L1-D)."""
+    DONT_USE_LIB.parent.mkdir(parents=True, exist_ok=True)
+    out, marked = [], 0
+    for line in LIB.read_text().splitlines(keepends=True):
+        out.append(line)
+        if re.match(r'\s+cell \("sky130_fd_sc_hd__(lpflow\w*|probe\w*)"\)\s*\{', line):
+            out.append("        dont_use : true;\n")
+            marked += 1
+    DONT_USE_LIB.write_text("".join(out))
+    return marked
 
 
 def package_copy(name, overrides):
@@ -145,7 +184,11 @@ def run_yosys(name, spec, out_dir, work_dir, srcs, cap_kib, extra_env=None):
         SYNTH_OUT=str(out_dir),
         SYNTH_ABC=spec["abc"],
     )
-    if name in GATESIM:
+    if spec["abc"] == "speed":
+        if not DONT_USE_LIB.exists():
+            dont_use_lib()
+        env.update(SYNTH_ABC_LIB=str(DONT_USE_LIB), SYNTH_ABC_SCRIPT=str(ABC_SCRIPT), SYNTH_ABC_CONSTR=str(ABC_CONSTR))
+    if name in GATESIM or spec["abc"] == "speed":
         NETLISTS.mkdir(parents=True, exist_ok=True)
         env["SYNTH_NETLIST"] = str(NETLISTS / (name + ".v"))
     env.update(extra_env or {})
@@ -206,7 +249,7 @@ def run_point(name, cap_kib=MEM_CAP_KIB):
     for d in (out_dir, work_dir):
         d.mkdir(parents=True, exist_ok=True)
     # A re-run must not leave evidence of an earlier run behind: the report files, the gate-level record and the netlist.
-    for stale in ("stat.txt", "checks.txt", "run.txt", "gatesim.txt"):
+    for stale in ("stat.txt", "checks.txt", "run.txt", "gatesim.txt", "timing.txt", "power.txt", "sta.txt", "sensitivity.txt", "reset.txt"):
         (out_dir / stale).unlink(missing_ok=True)
     (NETLISTS / (name + ".v")).unlink(missing_ok=True)
     (NETLISTS / (name + "_gl.v")).unlink(missing_ok=True)
@@ -523,8 +566,13 @@ def main(argv):
         return deletion_selftest()
     if len(argv) == 3 and argv[1] == "--gatesim" and argv[2] in GATESIM:
         return gatesim(argv[2])
-    if len(argv) == 2 and argv[1] == "--gatesim-points":
-        print("\n".join(GATESIM))
+    if len(argv) == 2 and argv[1] == "--dont-use-lib":
+        print("marked %d cells dont_use in %s" % (dont_use_lib(), DONT_USE_LIB))
+        return 0
+    if len(argv) in (2, 3) and argv[1] == "--gatesim-points":
+        # `make synth` re-runs the default-flow netlists, `make synth-timing` the timing-driven ones
+        want_speed = len(argv) == 3 and argv[2] == "speed"
+        print("\n".join(n for n in GATESIM if (POINTS[n]["abc"] == "speed") == want_speed))
         return 0
     if len(argv) == 2 and argv[1] in POINTS:
         return run_point(argv[1])

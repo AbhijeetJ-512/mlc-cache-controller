@@ -18,6 +18,10 @@
 #   make synth-l3-default   attempt the default 256 KiB L3; expected to run out of memory on a 15 GiB machine
 #   make synth-abc-compare  L1-D through ABC's full script, to compare with the default fast script
 #   make synth-selftest-deep  delete each check in turn from a copy of synth.tcl: the self-test must fail every time (about 2 min)
+#   make synth-timing  timing-driven mapping of the default configuration and the 8 KiB comparison points (about an hour)
+#   make sta           OpenSTA on those netlists and on four raw ones; Fmax, critical paths, power (after make synth and make synth-timing)
+#   make sta-sensitivity  minimum period at three settings of the boundary delays, on four cheap points
+#   make sta-selftest  STA known answers (feed-through, inverter delay from the liberty) and cases it must refuse
 #   make synth-summary rebuild build/reports/summary.md from the reports
 #   make clean         remove build products (the tracked logs in sim/logs/ and build/reports/ are kept)
 #
@@ -34,6 +38,8 @@ YOSYS    ?= yosys
 PYTHON   ?= python3
 V        ?= 0
 SYNTH    := $(PYTHON) scripts/synth_run.py
+STA      := $(PYTHON) scripts/sta_run.py
+GATESIM_KIND :=
 
 SIM_DIR := sim
 LOG_DIR := sim/logs
@@ -194,6 +200,12 @@ pts=$$($(SYNTH) --group $(1)) || { echo "synth: cannot list the points of group 
 rc=0; for p in $$pts; do $(SYNTH) $$p || rc=1; done
 endef
 
+define run_group_more
+pts=$$($(SYNTH) --group $(1)) || { echo "synth: cannot list the points of group $(1)"; exit 1; }; \
+[ -n "$$pts" ] || { echo "synth: group $(1) is empty"; exit 1; }; \
+for p in $$pts; do $(SYNTH) $$p || rc=1; done
+endef
+
 synth:
 	@$(call run_group,default); \
 	$(MAKE) --no-print-directory synth-gatesim || rc=1; \
@@ -213,7 +225,7 @@ synth-abc-compare:
 	$(MAKE) --no-print-directory synth-summary >/dev/null || rc=1; exit $$rc
 
 synth-gatesim:
-	@pts=$$($(SYNTH) --gatesim-points) || { echo "synth-gatesim: cannot list the points"; exit 1; }; \
+	@pts=$$($(SYNTH) --gatesim-points $(GATESIM_KIND)) || { echo "synth-gatesim: cannot list the points"; exit 1; }; \
 	[ -n "$$pts" ] || { echo "synth-gatesim: no points"; exit 1; }; \
 	rc=0; for p in $$pts; do $(SYNTH) --gatesim $$p || rc=1; done; exit $$rc
 
@@ -228,6 +240,36 @@ synth-stuckat:
 .PHONY: rules
 rules:
 	@$(PYTHON) scripts/check_rtl_rules.py && $(PYTHON) scripts/check_rtl_rules.py --selftest
+
+# Timing-driven mapping (D-041) of the default configuration and of the 8 KiB comparison points, then their gate-level re-runs.
+synth-timing:
+	@$(call run_group,timing); $(call run_group_more,timing-compare); \
+	$(MAKE) --no-print-directory synth-gatesim GATESIM_KIND=speed || rc=1; \
+	$(MAKE) --no-print-directory synth-summary >/dev/null || rc=1; \
+	if [ $$rc -eq 0 ]; then echo "synth-timing: every timing-driven point passed"; else echo "synth-timing: FAILED"; fi; exit $$rc
+
+# Static timing analysis (Phase 8). Needs the netlists of `make synth` (the raw points) and `make synth-timing`.
+define run_sta_group
+pts=$$($(STA) --group $(1)) || { echo "sta: cannot list the points of group $(1)"; exit 1; }; \
+[ -n "$$pts" ] || { echo "sta: group $(1) is empty"; exit 1; }; \
+for p in $$pts; do $(STA) $$p || rc=1; done
+endef
+
+.PHONY: synth-timing sta sta-selftest sta-summary sta-sensitivity
+sta:
+	@rc=0; $(call run_sta_group,raw); $(call run_sta_group,timing); $(call run_sta_group,timing-compare); \
+	$(MAKE) --no-print-directory sta-summary >/dev/null || rc=1; \
+	if [ $$rc -eq 0 ]; then echo "sta: every point analysed; see build/reports/timing_summary.md"; else echo "sta: FAILED"; fi; exit $$rc
+
+sta-selftest:
+	@$(STA) --selftest && echo "sta-selftest: known answers agree with the liberty tables, and a loop, an unconstrained output and a missing clock are refused"
+
+# How much the one assumption of constraints/mlc.sdc (the boundary delays) matters, on the cheap points.
+sta-sensitivity:
+	@rc=0; for p in arbiter_speed axi4_engine_speed l1_icache_speed l1_dcache_speed; do $(STA) --sensitivity $$p || rc=1; done; exit $$rc
+
+sta-summary:
+	@$(PYTHON) scripts/sta_summary.py
 
 synth-selftest:
 	@$(SYNTH) --selftest && echo "synth-selftest: each bad module is stopped by the check meant for it, the banned library cells are all covered, and clean modules are accepted"
@@ -247,6 +289,7 @@ check:
 	echo "== lint ==";  $(MAKE) --no-print-directory lint || rc=1; \
 	echo "== rules ==";  $(MAKE) --no-print-directory rules || rc=1; \
 	echo "== synth-selftest =="; $(MAKE) --no-print-directory synth-selftest || rc=1; \
+	echo "== sta-selftest =="; $(MAKE) --no-print-directory sta-selftest || rc=1; \
 	if [ $$rc -eq 0 ]; then echo "check: PASSED"; else echo "check: FAILED"; fi; exit $$rc
 
 # sim/logs/*.log and build/reports/ are git-tracked evidence, overwritten by every run - `clean` must not delete

@@ -12,7 +12,10 @@
 #   SYNTH_PARAMS     optional, "NAME=VALUE ..." overrides of the top module's own parameters (Yosys chparam)
 #   SYNTH_LIB        liberty file, sky130hd/sky130hd_tt.lib
 #   SYNTH_OUT        directory that receives stat.txt and checks.txt
-#   SYNTH_ABC        "fast" (the default flow, D-037) or "default" (ABC's full area-oriented script, much slower)
+#   SYNTH_ABC        "fast" (the default flow, D-037), "default" (ABC's full area-oriented script, much slower) or "speed"
+#                    (timing-driven mapping with fan-out buffering and gate sizing, for static timing analysis, D-041)
+#   SYNTH_ABC_LIB    optional, liberty used for mapping when it differs from SYNTH_LIB (a copy with some cells marked dont_use)
+#   SYNTH_ABC_SCRIPT, SYNTH_ABC_CONSTR   required for "speed": the ABC script and the driving-cell / load constraints
 #   SYNTH_NETLIST    optional, path to write the mapped netlist to
 #   SYNTH_PREMAPPED  optional, "1": SYNTH_SRCS is already a mapped netlist; skip synthesis and run only the checks on a
 #                    mapped netlist (the self-test uses this to prove those checks can fail)
@@ -57,10 +60,11 @@ set abcmode   [opt_env SYNTH_ABC fast]
 set netlist   [opt_env SYNTH_NETLIST ""]
 set premapped [opt_env SYNTH_PREMAPPED 0]
 
-if {$abcmode ne "fast" && $abcmode ne "default"} {
-    puts "synth.tcl: SYNTH_ABC must be fast or default, not $abcmode"
+if {$abcmode ne "fast" && $abcmode ne "default" && $abcmode ne "speed"} {
+    puts "synth.tcl: SYNTH_ABC must be fast, default or speed, not $abcmode"
     exit 1
 }
+set abclib [opt_env SYNTH_ABC_LIB $lib]
 
 file mkdir $out
 set checks [open $out/checks.txt w]
@@ -120,11 +124,13 @@ yosys synth -top $top -flatten -noabc
 must "no undriven or multiply-driven net and no combinational loop after generic synthesis (SR-03, SR-06)" {check -assert}
 must "no latch after generic synthesis (SR-02)" {select -assert-none t:$dlatch t:$adlatch t:$dlatchsr t:$_DLATCH_* t:$_DLATCHSR_* t:$_SR_*}
 
-yosys dfflibmap -liberty $lib
+yosys dfflibmap -liberty $abclib
 if {$abcmode eq "fast"} {
-    yosys abc -fast -liberty $lib
+    yosys abc -fast -liberty $abclib
+} elseif {$abcmode eq "speed"} {
+    yosys abc -constr [need_env SYNTH_ABC_CONSTR] -script [need_env SYNTH_ABC_SCRIPT] -liberty $abclib
 } else {
-    yosys abc -liberty $lib
+    yosys abc -liberty $abclib
 }
 yosys opt_clean -purge
 
