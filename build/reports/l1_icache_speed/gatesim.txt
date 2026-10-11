@@ -1,0 +1,1 @@
+gatesim l1_icache_speed: PASS, 4 checks on the synthesised netlist (128692 cells); the RTL run of the same testbench has 4 checks

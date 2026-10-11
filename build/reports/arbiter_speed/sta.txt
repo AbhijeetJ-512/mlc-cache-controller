@@ -1,0 +1,39 @@
+point: arbiter_speed
+top: l1_l2_arbiter
+netlist: build/netlists/arbiter_speed.v
+status: ok
+reason: -
+base_period_ns: 10.000
+input_delay_ns: 0.35
+output_delay_ns: 0.15
+min_period_ns: 1.859
+fmax_mhz: 537.9
+worst_setup_slack_at_base_ns: 8.141
+worst_hold_slack_ns: 0.517
+bracket: 1.896 ns: worst setup slack 0.037 (as required); 1.822 ns: worst setup slack -0.038 (as required)
+reg2reg_min_period_ns: 1.782
+reg2reg_depth: 4
+reg2reg_path: _110_ -> _111_
+reg2reg_hold_slack_ns: 0.517
+in2reg_min_period_ns: 1.748
+in2reg_depth: 5
+in2reg_path: up0_req_valid -> _111_
+in2reg_hold_slack_ns: 0.568
+reg2out_min_period_ns: 1.859
+reg2out_depth: 4
+reg2out_path: _109_ -> up0_req_ready
+reg2out_hold_slack_ns: 0.777
+in2out_min_period_ns: 1.766
+in2out_depth: 4
+in2out_path: up1_req_valid -> up0_req_ready
+in2out_hold_slack_ns: 0.708
+reset_unbuffered_min_period_ns: 0.264
+reset_net_fanout: 3
+reset_async_min_period_ns: 0.264
+reset_async_path: rst_n -> _109_
+reset_data_min_period_ns: 0.264
+reset_data_path: rst_n -> _109_
+total_power_w: 2.36e-04
+wall_seconds: 0
+peak_rss_kib: 54572
+sta: 2.7.0

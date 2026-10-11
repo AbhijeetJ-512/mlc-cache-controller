@@ -1,0 +1,37 @@
+point: axi4_engine_speed
+top: axi4_fill_engine
+netlist: build/netlists/axi4_engine_speed.v
+status: ok
+reason: -
+base_period_ns: 10.000
+input_delay_ns: 0.35
+output_delay_ns: 0.15
+min_period_ns: 2.495
+fmax_mhz: 400.8
+worst_setup_slack_at_base_ns: 7.505
+worst_hold_slack_ns: 0.481
+bracket: 2.545 ns: worst setup slack 0.050 (as required); 2.445 ns: worst setup slack -0.050 (as required)
+reg2reg_min_period_ns: 2.495
+reg2reg_depth: 7
+reg2reg_path: _6376_ -> _6924_
+reg2reg_hold_slack_ns: 0.481
+in2reg_min_period_ns: 1.628
+in2reg_depth: 6
+in2reg_path: req_valid -> _6560_
+in2reg_hold_slack_ns: 0.508
+reg2out_min_period_ns: 2.425
+reg2out_depth: 4
+reg2out_path: _6924_ -> wdata[10]
+reg2out_hold_slack_ns: 0.553
+reset_unbuffered_min_period_ns: 1.649
+reset_net_fanout: 7
+reset_async_min_period_ns: 0.213
+reset_async_path: rst_n -> _6375_
+reset_data_min_period_ns: 1.649
+reset_data_path: rst_n -> _6551_
+reset2out_min_period_ns: 0.988
+reset2out_path: rst_n -> req_ready
+total_power_w: 1.42e-02
+wall_seconds: 4
+peak_rss_kib: 68172
+sta: 2.7.0

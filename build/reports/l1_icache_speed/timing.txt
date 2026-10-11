@@ -1,0 +1,519 @@
+
+=== overall max ===
+Startpoint: _221729_ (rising edge-triggered flip-flop clocked by clk)
+Endpoint: resp_rdata[28] (output port clocked by clk)
+Path Group: clk
+Path Type: max
+
+Fanout      Cap     Slew    Delay     Time   Description
+---------------------------------------------------------------------------------
+                   0.000    0.000    0.000   clock clk (rise edge)
+                            0.000    0.000   clock network delay (ideal)
+                   0.000    0.000    0.000 ^ _221729_/CLK (sky130_fd_sc_hd__dfxtp_1)
+     2    0.003    0.031    0.278    0.278 v _221729_/Q (sky130_fd_sc_hd__dfxtp_1)
+    10    0.019    0.114    0.151    0.429 v _093109_/X (sky130_fd_sc_hd__clkbuf_1)
+     1    0.002    0.072    0.471    0.901 v _095532_/X (sky130_fd_sc_hd__or3b_2)
+     8    0.017    0.104    0.162    1.063 v _095533_/X (sky130_fd_sc_hd__clkbuf_1)
+    10    0.022    0.065    0.185    1.247 v _095561_/X (sky130_fd_sc_hd__buf_2)
+     6    0.013    0.247    0.211    1.459 ^ _095562_/Y (sky130_fd_sc_hd__nor2_1)
+    10    0.021    0.259    0.268    1.727 ^ _095563_/X (sky130_fd_sc_hd__clkbuf_1)
+    10    0.025    0.300    0.298    2.025 ^ _141449_/X (sky130_fd_sc_hd__clkbuf_1)
+     1    0.002    0.048    0.172    2.197 ^ _181966_/X (sky130_fd_sc_hd__a22o_1)
+     1    0.002    0.098    0.041    2.238 v _181967_/Y (sky130_fd_sc_hd__a221oi_1)
+     1    0.002    0.069    0.085    2.323 ^ _181974_/Y (sky130_fd_sc_hd__nand4_1)
+     1    0.002    0.035    0.050    2.374 v _181992_/Y (sky130_fd_sc_hd__nor4_1)
+     1    0.002    0.102    0.126    2.500 ^ _181993_/Y (sky130_fd_sc_hd__a21oi_1)
+     1    0.002    0.062    0.043    2.543 v _181994_/Y (sky130_fd_sc_hd__a21oi_1)
+     1    0.002    0.075    0.452    2.996 v _181995_/X (sky130_fd_sc_hd__mux4_2)
+     1    0.002    0.044    0.260    3.256 v _181996_/X (sky130_fd_sc_hd__mux2_2)
+     1    0.033    0.990    0.765    4.021 ^ _182601_/Y (sky130_fd_sc_hd__o21ai_0)
+                   0.990    0.000    4.021 ^ resp_rdata[28] (out)
+                                     4.021   data arrival time
+
+                   0.000   10.000   10.000   clock clk (rise edge)
+                            0.000   10.000   clock network delay (ideal)
+                            0.000   10.000   clock reconvergence pessimism
+                           -0.150    9.850   output external delay
+                                     9.850   data required time
+---------------------------------------------------------------------------------
+                                     9.850   data required time
+                                    -4.021   data arrival time
+---------------------------------------------------------------------------------
+                                     5.829   slack (MET)
+
+
+
+=== overall min ===
+Startpoint: dn_req_ready (input port clocked by clk)
+Endpoint: _221718_ (rising edge-triggered flip-flop clocked by clk)
+Path Group: clk
+Path Type: min
+
+   Delay     Time   Description
+-----------------------------------------------------------
+   0.000    0.000   clock clk (rise edge)
+   0.000    0.000   clock network delay (ideal)
+   0.350    0.350 ^ input external delay
+   0.009    0.359 ^ dn_req_ready (in)
+   0.027    0.386 v _186261_/Y (sky130_fd_sc_hd__nor2b_1)
+   0.000    0.386 v _221718_/D (sky130_fd_sc_hd__dfrtp_1)
+            0.386   data arrival time
+
+   0.000    0.000   clock clk (rise edge)
+   0.000    0.000   clock network delay (ideal)
+   0.000    0.000   clock reconvergence pessimism
+            0.000 ^ _221718_/CLK (sky130_fd_sc_hd__dfrtp_1)
+  -0.046   -0.046   library hold time
+           -0.046   data required time
+-----------------------------------------------------------
+           -0.046   data required time
+           -0.386   data arrival time
+-----------------------------------------------------------
+            0.431   slack (MET)
+
+
+
+=== reg2reg max ===
+Startpoint: _221726_ (rising edge-triggered flip-flop clocked by clk)
+Endpoint: _186262_ (rising edge-triggered flip-flop clocked by clk)
+Path Group: clk
+Path Type: max
+
+Fanout      Cap     Slew    Delay     Time   Description
+---------------------------------------------------------------------------------
+                   0.000    0.000    0.000   clock clk (rise edge)
+                            0.000    0.000   clock network delay (ideal)
+                   0.000    0.000    0.000 ^ _221726_/CLK (sky130_fd_sc_hd__dfxtp_1)
+     2    0.004    0.050    0.290    0.290 ^ _221726_/Q (sky130_fd_sc_hd__dfxtp_1)
+    10    0.024    0.283    0.246    0.536 ^ _093105_/X (sky130_fd_sc_hd__clkbuf_1)
+     8    0.018    0.250    0.279    0.815 v _093108_/Y (sky130_fd_sc_hd__nand4_1)
+     6    0.013    0.255    0.298    1.113 ^ _093113_/Y (sky130_fd_sc_hd__nor2_1)
+    10    0.025    0.294    0.294    1.407 ^ _093114_/X (sky130_fd_sc_hd__clkbuf_1)
+    10    0.024    0.291    0.297    1.704 ^ _093115_/X (sky130_fd_sc_hd__clkbuf_1)
+     1    0.002    0.048    0.190    1.894 ^ _093116_/X (sky130_fd_sc_hd__and3_1)
+     6    0.013    0.163    0.164    2.058 ^ _093117_/X (sky130_fd_sc_hd__clkbuf_1)
+    10    0.029    0.344    0.315    2.373 ^ _093118_/X (sky130_fd_sc_hd__clkbuf_1)
+    10    0.034    0.396    0.373    2.746 ^ _093119_/X (sky130_fd_sc_hd__clkbuf_1)
+     1    0.002    0.044    0.373    3.119 v _093120_/X (sky130_fd_sc_hd__mux2_2)
+                   0.044    0.000    3.119 v _186262_/D (sky130_fd_sc_hd__dfxtp_1)
+                                     3.119   data arrival time
+
+                   0.000   10.000   10.000   clock clk (rise edge)
+                            0.000   10.000   clock network delay (ideal)
+                            0.000   10.000   clock reconvergence pessimism
+                                    10.000 ^ _186262_/CLK (sky130_fd_sc_hd__dfxtp_1)
+                           -0.121    9.879   library setup time
+                                     9.879   data required time
+---------------------------------------------------------------------------------
+                                     9.879   data required time
+                                    -3.119   data arrival time
+---------------------------------------------------------------------------------
+                                     6.760   slack (MET)
+
+
+
+=== reg2reg min ===
+Startpoint: _221720_ (rising edge-triggered flip-flop clocked by clk)
+Endpoint: _221720_ (rising edge-triggered flip-flop clocked by clk)
+Path Group: clk
+Path Type: min
+
+Fanout      Cap     Slew    Delay     Time   Description
+---------------------------------------------------------------------------------
+                   0.000    0.000    0.000   clock clk (rise edge)
+                            0.000    0.000   clock network delay (ideal)
+                   0.000    0.000    0.000 ^ _221720_/CLK (sky130_fd_sc_hd__dfxtp_1)
+     2    0.004    0.049    0.289    0.289 ^ _221720_/Q (sky130_fd_sc_hd__dfxtp_1)
+     1    0.002    0.034    0.110    0.398 ^ _140510_/X (sky130_fd_sc_hd__mux2_1)
+                   0.034    0.000    0.398 ^ _221720_/D (sky130_fd_sc_hd__dfxtp_1)
+                                     0.398   data arrival time
+
+                   0.000    0.000    0.000   clock clk (rise edge)
+                            0.000    0.000   clock network delay (ideal)
+                            0.000    0.000   clock reconvergence pessimism
+                                     0.000 ^ _221720_/CLK (sky130_fd_sc_hd__dfxtp_1)
+                           -0.035   -0.035   library hold time
+                                    -0.035   data required time
+---------------------------------------------------------------------------------
+                                    -0.035   data required time
+                                    -0.398   data arrival time
+---------------------------------------------------------------------------------
+                                     0.433   slack (MET)
+
+
+
+=== in2reg max ===
+Startpoint: req_addr[5] (input port clocked by clk)
+Endpoint: _221752_ (rising edge-triggered flip-flop clocked by clk)
+Path Group: clk
+Path Type: max
+
+Fanout      Cap     Slew    Delay     Time   Description
+---------------------------------------------------------------------------------
+                   0.000    0.000    0.000   clock clk (rise edge)
+                            0.000    0.000   clock network delay (ideal)
+                            0.350    0.350 v input external delay
+     2    0.007    0.018    0.011    0.361 v req_addr[5] (in)
+    10    0.019    0.034    0.113    0.474 v _136908_/X (sky130_fd_sc_hd__buf_6)
+    10    0.026    0.051    0.154    0.628 v _136935_/X (sky130_fd_sc_hd__buf_4)
+     7    0.015    0.316    0.361    0.988 ^ _137257_/Y (sky130_fd_sc_hd__nor4b_4)
+    10    0.021    0.114    0.232    1.221 ^ _137258_/X (sky130_fd_sc_hd__buf_2)
+    10    0.024    0.127    0.191    1.412 ^ _137340_/X (sky130_fd_sc_hd__buf_2)
+    10    0.025    0.298    0.278    1.690 ^ _140089_/X (sky130_fd_sc_hd__buf_1)
+     1    0.002    0.078    0.109    1.799 v _140361_/Y (sky130_fd_sc_hd__nand3_1)
+     1    0.002    0.068    0.095    1.894 ^ _140362_/Y (sky130_fd_sc_hd__nand4_1)
+     1    0.002    0.031    0.043    1.937 v _140363_/Y (sky130_fd_sc_hd__nor3_1)
+     1    0.003    0.067    0.077    2.014 ^ _140368_/Y (sky130_fd_sc_hd__nand4_1)
+     1    0.002    0.035    0.044    2.058 v _140369_/Y (sky130_fd_sc_hd__nor4_1)
+     1    0.005    0.131    0.130    2.188 ^ _140371_/Y (sky130_fd_sc_hd__o21ai_1)
+     1    0.003    0.110    0.150    2.338 ^ _140372_/X (sky130_fd_sc_hd__xor2_1)
+     1    0.002    0.043    0.060    2.398 v _140499_/Y (sky130_fd_sc_hd__nor4_1)
+     5    0.012    0.167    0.149    2.546 ^ _140500_/Y (sky130_fd_sc_hd__nand4b_1)
+     3    0.038    0.397    0.388    2.935 ^ _140554_/X (sky130_fd_sc_hd__o31a_1)
+     1    0.004    0.085    0.113    3.048 v _140555_/Y (sky130_fd_sc_hd__nand2_1)
+     2    0.007    0.210    0.265    3.313 ^ _140560_/Y (sky130_fd_sc_hd__a211oi_2)
+     1    0.002    0.052    0.334    3.648 v _140562_/X (sky130_fd_sc_hd__mux2_1)
+                   0.052    0.000    3.648 v _221752_/D (sky130_fd_sc_hd__dfrtp_1)
+                                     3.648   data arrival time
+
+                   0.000   10.000   10.000   clock clk (rise edge)
+                            0.000   10.000   clock network delay (ideal)
+                            0.000   10.000   clock reconvergence pessimism
+                                    10.000 ^ _221752_/CLK (sky130_fd_sc_hd__dfrtp_1)
+                           -0.128    9.872   library setup time
+                                     9.872   data required time
+---------------------------------------------------------------------------------
+                                     9.872   data required time
+                                    -3.648   data arrival time
+---------------------------------------------------------------------------------
+                                     6.225   slack (MET)
+
+
+
+=== in2reg min ===
+Startpoint: dn_req_ready (input port clocked by clk)
+Endpoint: _221718_ (rising edge-triggered flip-flop clocked by clk)
+Path Group: clk
+Path Type: min
+
+Fanout      Cap     Slew    Delay     Time   Description
+---------------------------------------------------------------------------------
+                   0.000    0.000    0.000   clock clk (rise edge)
+                            0.000    0.000   clock network delay (ideal)
+                            0.350    0.350 ^ input external delay
+     1    0.002    0.019    0.009    0.359 ^ dn_req_ready (in)
+     1    0.002    0.020    0.027    0.386 v _186261_/Y (sky130_fd_sc_hd__nor2b_1)
+                   0.020    0.000    0.386 v _221718_/D (sky130_fd_sc_hd__dfrtp_1)
+                                     0.386   data arrival time
+
+                   0.000    0.000    0.000   clock clk (rise edge)
+                            0.000    0.000   clock network delay (ideal)
+                            0.000    0.000   clock reconvergence pessimism
+                                     0.000 ^ _221718_/CLK (sky130_fd_sc_hd__dfrtp_1)
+                           -0.046   -0.046   library hold time
+                                    -0.046   data required time
+---------------------------------------------------------------------------------
+                                    -0.046   data required time
+                                    -0.386   data arrival time
+---------------------------------------------------------------------------------
+                                     0.431   slack (MET)
+
+
+
+=== reg2out max ===
+Startpoint: _221729_ (rising edge-triggered flip-flop clocked by clk)
+Endpoint: resp_rdata[28] (output port clocked by clk)
+Path Group: clk
+Path Type: max
+
+Fanout      Cap     Slew    Delay     Time   Description
+---------------------------------------------------------------------------------
+                   0.000    0.000    0.000   clock clk (rise edge)
+                            0.000    0.000   clock network delay (ideal)
+                   0.000    0.000    0.000 ^ _221729_/CLK (sky130_fd_sc_hd__dfxtp_1)
+     2    0.003    0.031    0.278    0.278 v _221729_/Q (sky130_fd_sc_hd__dfxtp_1)
+    10    0.019    0.114    0.151    0.429 v _093109_/X (sky130_fd_sc_hd__clkbuf_1)
+     1    0.002    0.072    0.471    0.901 v _095532_/X (sky130_fd_sc_hd__or3b_2)
+     8    0.017    0.104    0.162    1.063 v _095533_/X (sky130_fd_sc_hd__clkbuf_1)
+    10    0.022    0.065    0.185    1.247 v _095561_/X (sky130_fd_sc_hd__buf_2)
+     6    0.013    0.247    0.211    1.459 ^ _095562_/Y (sky130_fd_sc_hd__nor2_1)
+    10    0.021    0.259    0.268    1.727 ^ _095563_/X (sky130_fd_sc_hd__clkbuf_1)
+    10    0.025    0.300    0.298    2.025 ^ _141449_/X (sky130_fd_sc_hd__clkbuf_1)
+     1    0.002    0.048    0.172    2.197 ^ _181966_/X (sky130_fd_sc_hd__a22o_1)
+     1    0.002    0.098    0.041    2.238 v _181967_/Y (sky130_fd_sc_hd__a221oi_1)
+     1    0.002    0.069    0.085    2.323 ^ _181974_/Y (sky130_fd_sc_hd__nand4_1)
+     1    0.002    0.035    0.050    2.374 v _181992_/Y (sky130_fd_sc_hd__nor4_1)
+     1    0.002    0.102    0.126    2.500 ^ _181993_/Y (sky130_fd_sc_hd__a21oi_1)
+     1    0.002    0.062    0.043    2.543 v _181994_/Y (sky130_fd_sc_hd__a21oi_1)
+     1    0.002    0.075    0.452    2.996 v _181995_/X (sky130_fd_sc_hd__mux4_2)
+     1    0.002    0.044    0.260    3.256 v _181996_/X (sky130_fd_sc_hd__mux2_2)
+     1    0.033    0.990    0.765    4.021 ^ _182601_/Y (sky130_fd_sc_hd__o21ai_0)
+                   0.990    0.000    4.021 ^ resp_rdata[28] (out)
+                                     4.021   data arrival time
+
+                   0.000   10.000   10.000   clock clk (rise edge)
+                            0.000   10.000   clock network delay (ideal)
+                            0.000   10.000   clock reconvergence pessimism
+                           -0.150    9.850   output external delay
+                                     9.850   data required time
+---------------------------------------------------------------------------------
+                                     9.850   data required time
+                                    -4.021   data arrival time
+---------------------------------------------------------------------------------
+                                     5.829   slack (MET)
+
+
+
+=== reg2out min ===
+Startpoint: _221718_ (rising edge-triggered flip-flop clocked by clk)
+Endpoint: dn_req_we (output port clocked by clk)
+Path Group: clk
+Path Type: min
+
+Fanout      Cap     Slew    Delay     Time   Description
+---------------------------------------------------------------------------------
+                   0.000    0.000    0.000   clock clk (rise edge)
+                            0.000    0.000   clock network delay (ideal)
+                   0.000    0.000    0.000 ^ _221718_/CLK (sky130_fd_sc_hd__dfrtp_1)
+     4    0.038    0.194    0.484    0.484 v _221718_/Q (sky130_fd_sc_hd__dfrtp_1)
+                   0.194    0.000    0.484 v dn_req_we (out)
+                                     0.484   data arrival time
+
+                   0.000    0.000    0.000   clock clk (rise edge)
+                            0.000    0.000   clock network delay (ideal)
+                            0.000    0.000   clock reconvergence pessimism
+                           -0.150   -0.150   output external delay
+                                    -0.150   data required time
+---------------------------------------------------------------------------------
+                                    -0.150   data required time
+                                    -0.484   data arrival time
+---------------------------------------------------------------------------------
+                                     0.634   slack (MET)
+
+
+
+=== in2out max ===
+Startpoint: req_addr[5] (input port clocked by clk)
+Endpoint: resp_valid (output port clocked by clk)
+Path Group: clk
+Path Type: max
+
+Fanout      Cap     Slew    Delay     Time   Description
+---------------------------------------------------------------------------------
+                   0.000    0.000    0.000   clock clk (rise edge)
+                            0.000    0.000   clock network delay (ideal)
+                            0.350    0.350 v input external delay
+     2    0.007    0.018    0.011    0.361 v req_addr[5] (in)
+    10    0.019    0.034    0.113    0.474 v _136908_/X (sky130_fd_sc_hd__buf_6)
+    10    0.026    0.051    0.154    0.628 v _136935_/X (sky130_fd_sc_hd__buf_4)
+     7    0.015    0.316    0.361    0.988 ^ _137257_/Y (sky130_fd_sc_hd__nor4b_4)
+    10    0.021    0.114    0.232    1.221 ^ _137258_/X (sky130_fd_sc_hd__buf_2)
+    10    0.024    0.127    0.191    1.412 ^ _137340_/X (sky130_fd_sc_hd__buf_2)
+    10    0.025    0.298    0.278    1.690 ^ _140089_/X (sky130_fd_sc_hd__buf_1)
+     1    0.002    0.078    0.109    1.799 v _140361_/Y (sky130_fd_sc_hd__nand3_1)
+     1    0.002    0.068    0.095    1.894 ^ _140362_/Y (sky130_fd_sc_hd__nand4_1)
+     1    0.002    0.031    0.043    1.937 v _140363_/Y (sky130_fd_sc_hd__nor3_1)
+     1    0.003    0.067    0.077    2.014 ^ _140368_/Y (sky130_fd_sc_hd__nand4_1)
+     1    0.002    0.035    0.044    2.058 v _140369_/Y (sky130_fd_sc_hd__nor4_1)
+     1    0.005    0.131    0.130    2.188 ^ _140371_/Y (sky130_fd_sc_hd__o21ai_1)
+     1    0.003    0.110    0.150    2.338 ^ _140372_/X (sky130_fd_sc_hd__xor2_1)
+     1    0.002    0.043    0.060    2.398 v _140499_/Y (sky130_fd_sc_hd__nor4_1)
+     5    0.012    0.167    0.149    2.546 ^ _140500_/Y (sky130_fd_sc_hd__nand4b_1)
+     3    0.038    0.397    0.388    2.935 ^ _140554_/X (sky130_fd_sc_hd__o31a_1)
+     1    0.002    0.075    0.110    3.045 v _140564_/Y (sky130_fd_sc_hd__nand3_1)
+     1    0.033    0.990    0.778    3.823 ^ _140566_/Y (sky130_fd_sc_hd__o21ai_0)
+                   0.990    0.000    3.823 ^ resp_valid (out)
+                                     3.823   data arrival time
+
+                   0.000   10.000   10.000   clock clk (rise edge)
+                            0.000   10.000   clock network delay (ideal)
+                            0.000   10.000   clock reconvergence pessimism
+                           -0.150    9.850   output external delay
+                                     9.850   data required time
+---------------------------------------------------------------------------------
+                                     9.850   data required time
+                                    -3.823   data arrival time
+---------------------------------------------------------------------------------
+                                     6.027   slack (MET)
+
+
+
+=== in2out min ===
+Startpoint: req_valid (input port clocked by clk)
+Endpoint: resp_valid (output port clocked by clk)
+Path Group: clk
+Path Type: min
+
+Fanout      Cap     Slew    Delay     Time   Description
+---------------------------------------------------------------------------------
+                   0.000    0.000    0.000   clock clk (rise edge)
+                            0.000    0.000   clock network delay (ideal)
+                            0.350    0.350 v input external delay
+     4    0.009    0.023    0.015    0.365 v req_valid (in)
+     1    0.002    0.039    0.046    0.410 ^ _140564_/Y (sky130_fd_sc_hd__nand3_1)
+     1    0.033    0.400    0.329    0.739 v _140566_/Y (sky130_fd_sc_hd__o21ai_0)
+                   0.400    0.000    0.739 v resp_valid (out)
+                                     0.739   data arrival time
+
+                   0.000    0.000    0.000   clock clk (rise edge)
+                            0.000    0.000   clock network delay (ideal)
+                            0.000    0.000   clock reconvergence pessimism
+                           -0.150   -0.150   output external delay
+                                    -0.150   data required time
+---------------------------------------------------------------------------------
+                                    -0.150   data required time
+                                    -0.739   data arrival time
+---------------------------------------------------------------------------------
+                                     0.889   slack (MET)
+
+
+
+=== limits ===
+max slew
+
+Pin                                    Limit    Slew   Slack
+------------------------------------------------------------
+rst_n                                   1.50    2.16   -0.66 (VIOLATED)
+_093099_/A                              1.50    2.16   -0.66 (VIOLATED)
+_140501_/A                              1.50    2.16   -0.66 (VIOLATED)
+_140503_/A                              1.50    2.16   -0.66 (VIOLATED)
+_221590_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221591_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221592_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221593_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221594_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221595_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221596_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221597_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221598_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221599_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221600_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221601_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221602_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221603_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221604_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221605_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221606_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221607_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221608_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221609_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221610_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221611_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221612_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221613_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221614_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221615_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221616_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221617_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221618_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221619_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221620_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221621_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221622_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221623_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221624_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221625_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221626_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221627_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221628_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221629_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221630_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221631_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221632_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221633_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221634_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221635_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221636_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221637_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221638_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221639_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221640_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221641_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221642_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221643_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221644_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221645_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221646_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221647_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221648_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221649_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221650_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221651_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221652_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221653_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221654_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221655_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221656_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221657_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221658_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221659_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221660_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221661_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221662_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221663_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221664_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221665_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221666_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221667_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221668_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221669_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221670_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221671_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221672_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221673_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221674_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221675_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221676_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221677_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221678_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221679_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221680_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221681_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221682_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221683_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221684_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221685_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221686_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221687_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221688_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221689_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221690_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221691_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221692_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221693_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221694_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221695_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221696_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221697_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221698_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221699_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221700_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221701_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221702_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221703_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221704_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221705_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221706_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221707_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221708_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221709_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221710_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221711_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221712_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221713_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221714_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221715_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221716_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221717_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221718_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221751_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+_221752_/RESET_B                        1.50    2.16   -0.66 (VIOLATED)
+
+max capacitance
+
+Pin                                    Limit     Cap   Slack
+------------------------------------------------------------
+rst_n                                   0.33    0.48   -0.15 (VIOLATED)
+
+wns max 0.00
+tns max 0.00

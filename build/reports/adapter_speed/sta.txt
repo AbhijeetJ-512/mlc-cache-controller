@@ -1,0 +1,23 @@
+point: adapter_speed
+top: l2_l3_width_adapter
+netlist: build/netlists/adapter_speed.v
+status: ok
+reason: -
+base_period_ns: 10.000
+input_delay_ns: 0.35
+output_delay_ns: 0.15
+min_period_ns: 1.446
+fmax_mhz: 691.6
+worst_setup_slack_at_base_ns: 8.554
+worst_hold_slack_ns: 0.553
+bracket: 1.475 ns: worst setup slack 0.029 (as required); 1.417 ns: worst setup slack -0.028 (as required)
+in2out_min_period_ns: 1.446
+in2out_depth: 3
+in2out_path: l2_req_addr[5] -> l2_resp_line[110]
+in2out_hold_slack_ns: 0.553
+reset_unbuffered_min_period_ns: -
+reset_net_fanout: -
+total_power_w: 3.16e-04
+wall_seconds: 1
+peak_rss_kib: 59404
+sta: 2.7.0

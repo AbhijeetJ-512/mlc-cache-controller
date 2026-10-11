@@ -1,0 +1,41 @@
+point: l1_icache
+top: l1_icache_ctrl
+netlist: build/netlists/l1_icache.v
+status: ok
+reason: -
+base_period_ns: 10.000
+input_delay_ns: 0.35
+output_delay_ns: 0.15
+min_period_ns: 51.524
+fmax_mhz: 19.4
+worst_setup_slack_at_base_ns: -41.524
+worst_hold_slack_ns: 0.428
+bracket: 52.554 ns: worst setup slack 1.031 (as required); 50.494 ns: worst setup slack -1.030 (as required)
+reg2reg_min_period_ns: 35.302
+reg2reg_depth: 6
+reg2reg_path: _289539_ -> _256271_
+reg2reg_hold_slack_ns: 0.428
+in2reg_min_period_ns: 51.524
+in2reg_depth: 16
+in2reg_path: req_addr[10] -> _289530_
+in2reg_hold_slack_ns: 0.432
+reg2out_min_period_ns: 24.468
+reg2out_depth: 15
+reg2out_path: _289539_ -> resp_rdata[0]
+reg2out_hold_slack_ns: 0.599
+in2out_min_period_ns: 50.672
+in2out_depth: 15
+in2out_path: req_addr[10] -> resp_valid
+in2out_hold_slack_ns: 0.912
+reset_unbuffered_min_period_ns: 31.681
+reset_net_fanout: 133
+reset_async_min_period_ns: 2.177
+reset_async_path: rst_n -> _289398_
+reset_data_min_period_ns: 31.681
+reset_data_path: rst_n -> _254370_
+reset2out_min_period_ns: 3.947
+reset2out_path: rst_n -> resp_valid
+total_power_w: 2.46e-01
+wall_seconds: 155
+peak_rss_kib: 601852
+sta: 2.7.0

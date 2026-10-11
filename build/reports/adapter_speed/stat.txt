@@ -1,0 +1,21 @@
+
+16. Printing statistics.
+
+=== l2_l3_width_adapter ===
+
+   Number of wires:                 45
+   Number of wire bits:           1414
+   Number of public wires:          17
+   Number of public wire bits:    1386
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                316
+     sky130_fd_sc_hd__buf_2          1
+     sky130_fd_sc_hd__buf_6         19
+     sky130_fd_sc_hd__clkbuf_8       8
+     sky130_fd_sc_hd__conb_1        32
+     sky130_fd_sc_hd__mux2_2       256
+
+   Chip area for module '\l2_l3_width_adapter': 3331.945600
+

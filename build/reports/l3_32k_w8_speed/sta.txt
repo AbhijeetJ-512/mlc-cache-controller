@@ -1,0 +1,41 @@
+point: l3_32k_w8_speed
+top: l3_cache_ctrl
+netlist: build/netlists/l3_32k_w8_speed.v
+status: ok
+reason: -
+base_period_ns: 10.000
+input_delay_ns: 0.35
+output_delay_ns: 0.15
+min_period_ns: 8.366
+fmax_mhz: 119.5
+worst_setup_slack_at_base_ns: 1.634
+worst_hold_slack_ns: 0.418
+bracket: 8.533 ns: worst setup slack 0.167 (as required); 8.199 ns: worst setup slack -0.167 (as required)
+reg2reg_min_period_ns: 7.686
+reg2reg_depth: 26
+reg2reg_path: _2011396_ -> _1751554_
+reg2reg_hold_slack_ns: 0.418
+in2reg_min_period_ns: 8.366
+in2reg_depth: 32
+in2reg_path: req_addr[6] -> _1783227_
+in2reg_hold_slack_ns: 0.520
+reg2out_min_period_ns: 6.202
+reg2out_depth: 22
+reg2out_path: _1981970_ -> resp_line[50]
+reg2out_hold_slack_ns: 0.675
+in2out_min_period_ns: 7.028
+in2out_depth: 25
+in2out_path: req_addr[7] -> resp_line[146]
+in2out_hold_slack_ns: 0.780
+reset_unbuffered_min_period_ns: 15.032
+reset_net_fanout: 965
+reset_async_min_period_ns: 15.032
+reset_async_path: rst_n -> _2002947_
+reset_data_min_period_ns: 15.032
+reset_data_path: rst_n -> _2002947_
+reset2out_min_period_ns: 13.737
+reset2out_path: rst_n -> resp_valid
+total_power_w: 1.98e+00
+wall_seconds: 1795
+peak_rss_kib: 3668224
+sta: 2.7.0
