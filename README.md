@@ -6,17 +6,19 @@ and L3 with tree-PLRU replacement, a custom valid/ready CPU-side interface, and 
 memory-side interface. Synthesis, STA, and place-and-route all target **Sky130HD** via
 **Yosys + OpenSTA + OpenROAD**, in a single Makefile matching this portfolio's `Full-Adder` flow.
 
-> **Project status: Phase 7 of 12 (Phases 5 and 6, the UVM tier and the formal properties, are deferred at the project
-> owner's request) — every unit is built and Tier-1-verified, the units are wired into one IP, and each unit has been
-> synthesized to Sky130HD.** `make check` runs the parameter guards, a structural check of the top, 13 Tier-1 testbenches
-> (594 checks, logs checked in under `sim/logs/`), the Yosys elaboration check, an RTL coding-rule check and the synthesis flow's self-test, all
-> passing, in about three and a half minutes (219 s on the last run; 187 to 219 s across runs). `make synth` and `make synth-sweep` map every unit at its default
-> configuration and at 11 sweep points to Sky130HD with zero latches, tri-states, undriven or multiply-driven nets or unlisted
-> warnings; the results are in [`build/reports/summary.md`](build/reports/summary.md). **Two things were not synthesized:
-> the default 256 KiB L3 (it ran out of memory under a 12,000,000 KiB cap, so its area is NOT MEASURED; L3 is measured up to 32 KiB)
-> and the integrated top (it is wiring only).** The integrated top **elaborates cleanly but has not been simulated**: its
-> functional behaviour will be verified only by the UVM tier. Timing, power and place-and-route figures are **NOT YET
-> MEASURED**; the UVM tier is **NOT YET RUN (external simulator required)**.
+> **Project status: Phase 8 of 12 (Phases 5 and 6, the UVM tier and the formal properties, are deferred at the project
+> owner's request) — every unit is built and Tier-1-verified, the units are wired into one IP, each unit has been
+> synthesized to Sky130HD, and the default configuration has been timed with OpenSTA.** `make check` runs the parameter guards, a
+> structural check of the top, 13 Tier-1 testbenches (594 checks, logs checked in under `sim/logs/`), the Yosys elaboration check, an RTL
+> coding-rule check and the self-tests of the synthesis and timing flows, all passing, in about three and a half minutes (187 to 220 s across
+> runs). `make synth` and `make synth-sweep` map every unit at its default configuration and at 11 sweep points to Sky130HD with zero latches,
+> tri-states, undriven or multiply-driven nets or unlisted warnings ([`build/reports/summary.md`](build/reports/summary.md)). **Two things were not
+> synthesized: the default 256 KiB L3 (it ran out of memory under a 12,000,000 KiB cap, so its area is NOT MEASURED; L3 is measured up to 32 KiB)
+> and the integrated top (it is wiring only).** `make synth-timing` and `make sta` give each unit's minimum clock period, critical path, logic
+> depth, hold slack and a static power estimate ([`build/reports/timing_summary.md`](build/reports/timing_summary.md)); every period is an
+> **upper bound on frequency** (ideal clock, no wires), analysed one unit at a time, so **no frequency of the integrated hierarchy is claimed**.
+> The integrated top **elaborates cleanly but has not been simulated**: its functional behaviour will be verified only by the UVM tier.
+> Place-and-route figures and any timing across units are **NOT YET MEASURED**; the UVM tier is **NOT YET RUN (external simulator required)**.
 > Every number in this repository either cites a checked-in tool report, is labelled
 > **NOT YET MEASURED** (a locally-runnable figure that just hasn't been produced yet), or
 > **NOT YET RUN (external simulator required)** (the UVM verification tier — see below). See
@@ -91,13 +93,15 @@ mlc_cache_controller/
 │                   parameter-guard cases, and checked-in logs (sim/logs/)
 ├── scripts/        lint.ys (Yosys elaboration check), check_top.py, gen_plru_tables.py; synth.tcl (the synthesis
 │                   flow), synth_run.py (the table of synthesis points, the log check, the gate-level re-run),
-│                   synth_summary.py, synth_selftest/; STA and P&R scripts arrive in Phases 8-9
+│                   synth_summary.py, synth_stuckat.py, synth_selftest/, abc_speed.script/.constr (the timing-driven
+│                   mapping); sta.tcl, sta_run.py, sta_summary.py, sta_selftest.py (static timing); P&R scripts arrive in Phase 9
+├── constraints/    mlc.sdc: the clock and boundary constraints of one unit analysed on its own
 ├── sky130hd/       the Sky130HD typical-corner liberty the flow reads (origin and SHA-256 in its README)
-├── build/reports/  checked-in synthesis evidence: one directory per synthesis point, and summary.md
+├── build/reports/  checked-in evidence: one directory per synthesis point (and its timing), summary.md, timing_summary.md
 ├── docs/           requirements, architecture, microarchitecture, interfaces, engineering log,
 │                   and per-phase implementation plans (docs/superpowers/plans/)
 ├── Makefile        check, sim, test-<name>, elab, top, lint, list, clean, and the synth-* targets
-└── tb_uvm/, assertions/, formal/, constraints/, config/,
+└── tb_uvm/, assertions/, formal/, config/,
     pnr_results/, results/                                  planned, Phases 5-10
 ```
 
@@ -128,6 +132,10 @@ make synth-abc-compare # the L1-D through ABC's full script, to compare with the
 make synth-gatesim     # the four Tier-1 tests that use only ports, run on the synthesized netlists (needs make synth first)
 make synth-stuckat     # tie every cell output of the arbiter and adapter netlists to 0 and 1 and run their tests (needs make synth first)
 make synth-selftest-deep  # break each of the flow's checks in turn in a copy; the self-test must notice every time (2 min)
+make synth-timing      # timing-driven mapping of the default configuration and four 8 KiB points (49 min of synthesis)
+make sta               # OpenSTA on those netlists and four raw ones: minimum period, critical path, hold, power (75 min; needs make synth and make synth-timing)
+make sta-sensitivity   # how the minimum period moves with the boundary delays, on four cheap points (about 10 min)
+make sta-selftest      # the timing flow's known answers and refused cases (part of make check, about 5 s)
 ```
 
 A test passes only if its simulation exits cleanly, prints no `FAIL` line, and prints at least one
@@ -162,9 +170,37 @@ What the numbers say, and what they do not:
   is 14,997,923, 15,047,108 and 15,071,885 um^2 at 2, 4 and 8 ways.
 - The flow's cost is part of the result. The default L2 takes just under ten minutes and 9 GiB; for L2 and for L3, peak memory doubles with each doubling of capacity (2.3, 4.5 and 9.0 GiB at 8, 16 and 32 KiB).
 - Not synthesized: the default L3 (above) and the integrated top, which is wiring only. No whole-hierarchy area is claimed.
-- Timing, power and place-and-route are **NOT YET MEASURED** (Phases 8 and 9).
+- Timing is in the next section; place and route is **NOT YET MEASURED** (Phase 9).
 - The four unit testbenches that use only ports (`reset_sync`, L1-I, the adapter, the arbiter) also pass, with the same testbench files, on the synthesized
   netlists. The other four units (L1-D, L2, L3, the AXI4 engine) have testbenches that read internal state and have **no gate-level evidence**.
+
+## Timing results (OpenSTA 2.7.0, Sky130HD typical corner)
+
+Measured by `make synth-timing` and `make sta`; all of it, with the four classes of path, hold, power and the reset network, is in
+[`build/reports/timing_summary.md`](build/reports/timing_summary.md). Each unit is mapped for delay (fan-out buffering and sizing), then analysed alone on one ideal
+clock with a 0.35 ns input delay and a 0.15 ns output delay (`constraints/mlc.sdc`).
+
+| Unit | Min period (ns) | Fmax bound (MHz) | Limiting path | Hold slack (ns) |
+|---|---|---|---|---|
+| Reset synchroniser | 0.638 | 1,567 | register to output | 0.331 |
+| L1 to L2 arbiter | 1.859 | 538 | register to output, 4 cells | 0.517 |
+| L2-L3 adapter | 1.446 | 692 | input to output, 3 cells | 0.553 |
+| AXI4 fill engine | 2.495 | 401 | register to register, 7 cells | 0.481 |
+| L1-I, 4 KiB | 4.171 | 240 | register to output, 16 cells | 0.431 |
+| L1-D, 4 KiB | 5.997 | 167 | input to register, 25 cells | 0.427 |
+| L2, 32 KiB 4-way | 9.168 | 109 | input to register, 34 cells | 0.416 |
+| L3, **32 KiB** 8-way (not the default L3) | 8.366 | 120 | input to register, 32 cells | 0.418 |
+
+- **Every figure is an upper bound on frequency**, not what a built chip would run at: the clock is ideal and there are no wires. Each unit is analysed
+  alone, so a path that crosses units (an L1's request through the arbiter into L2) is not analysed and no frequency of the whole is claimed.
+- **Without buffering the numbers mean nothing.** The unbuffered Phase 7 netlist of the L1-I needs 51.5 ns (two minimum-size gates drive fan-outs of 511 and 261); mapped for
+  delay it needs 4.17 ns. The arbiter goes from 7.00 to 1.86 ns.
+- **About half of the L2 and L3 limiting paths is the address being fanned out to the flip-flop arrays** (4.5 of 9.2 ns, 17 buffers in series; ABC builds a chain, not a tree), so the
+  L2 and L3 numbers are pessimistic there and optimistic about wires. With every fan-out buffer free they would need 4.6 and 3.9 ns, a bound nobody reaches.
+- **The prediction that the L3's 8-way compare is the longest hit path is contradicted** (`docs/03_microarchitecture.md` section 5, D-042): at 8 KiB the direct-mapped L1-D needs 5.76 ns, the
+  4-way L2 8.52, the 4-way L3 7.05 and the 8-way L3 7.22. Associativity costs 0.17 ns (2.4%) from 4 to 8 ways at the L3, less than the difference between the L2 and L3 (line size and write path).
+- The reset net (a fan-out of up to 1,796) is not buffered by this flow and is a false path in the figures above; its unbuffered period is recorded separately for P&R.
+- Power in the reports is OpenSTA's static estimate at its default switching activity, not a design estimate (D-041).
 
 ## Verification: split by test level, not just by tool
 
@@ -198,7 +234,7 @@ See D-013 in `docs/engineering_log.md` for the full reasoning, including the dir
 |---|---|---|
 | Icarus Verilog 12.0 | installed | Tier-1 smoke-test simulator |
 | Yosys 0.33 | installed | Synthesis, target Sky130HD (`yosys -c` runs `scripts/synth.tcl`) |
-| OpenSTA 2.7.0 | installed | Static timing analysis |
+| OpenSTA 2.7.0 | installed, used from Phase 8 | Static timing analysis (`sta`) |
 | OpenROAD v2.0-25346 | **installed, verified runnable** | Place and route, target Sky130HD |
 | Python 3.13 | installed | `make top` (`scripts/check_top.py`), the synthesis driver and summary, the PLRU table generator |
 | Sky130HD liberty | **vendored** in `sky130hd/` | Synthesis; the LEF files are added with place and route (Phase 9) |
@@ -213,6 +249,8 @@ See D-013 in `docs/engineering_log.md` for the full reasoning, including the dir
   15 GiB machine that was also running other work).
 - **The default L3's out-of-memory result:** `make synth-l3-default`. It depends on the machine and on the 12,000,000 KiB cap in
   `scripts/synth_run.py`.
-- **Timing, power, place and route, and the UVM tier:** nothing yet. Every command that will produce one of those numbers is specified
+- **Timing figures:** `make synth-timing` then `make sta` rewrite `build/reports/<point>/{timing,power,reset,sta}.txt` and `timing_summary.md`; the minimum
+  periods were identical on every repeated run made (the mapping and OpenSTA are deterministic); wall time and memory depend on the machine.
+- **Place and route, and the UVM tier:** nothing yet. Every command that will produce one of those numbers is specified
   in the phase table in `docs/00_project_plan.md`, so each claim will be checkable the moment it exists, per this project's
   `NOT YET MEASURED` policy.

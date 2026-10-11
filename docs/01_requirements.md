@@ -286,7 +286,16 @@ liberty file already used for synthesis/STA.
 | TR-03 | M | The critical path shall be identified, reported, and explained (expected to be the L3 tag-compare-and-way-select, being the widest associativity — to be confirmed, not assumed, against measurement). |
 | TR-04 | M | All timing numbers in all documents shall be traceable to a checked-in report file. Unmeasured values shall be labelled **NOT YET MEASURED**. |
 
-**Current status of all timing figures: NOT YET MEASURED.** No RTL exists yet (Phase 0).
+**Status after Phase 8** (`build/reports/timing_summary.md`; D-041, D-042).
+- TR-01: met. OpenSTA 2.7.0 on the synthesized netlists (the raw ones of Phase 7 and, for a result that means something, the timing-driven ones of
+  `make synth-timing`) against `sky130hd_tt.lib`, one unit at a time on an ideal clock (`constraints/mlc.sdc`).
+- TR-02: met for the default configuration and four 8 KiB points: the minimum period is the base period minus the worst setup slack and is confirmed by
+  STA 2% above (no violation) and 2% below (one). The capacity and associativity sweep is Phase 10.
+- TR-03: met for those points. The critical path of the L1-D, L2 and L3 is an input-to-register path from a low bit of the address through the tag
+  compare to a same-cycle array write (25, 34 and 32 cells); the L1-I's is register to output (16 cells). The prediction that the L3's 8-way compare would be
+  the longest hit path is **contradicted** (`03_microarchitecture.md` section 5): the L2's is.
+- TR-04: every figure is in a checked-in report. **Not measured:** the timing of any path through more than one unit and of the integrated hierarchy,
+  wire delay and clock skew (Phase 9), other corners, and the sizing and buffer tree that P&R adds. Every period is an upper bound on frequency.
 
 ---
 
@@ -297,7 +306,7 @@ liberty file already used for synthesis/STA.
 | AR-01 | S | Cell area shall be reported per level and per configuration in the capacity/associativity sweep. |
 | AR-02 | S | Tag/valid/dirty array area vs. data array area shall be reported separately, so the "how much does associativity cost" question (direct-mapped L1 vs 4-way L2 vs 8-way L3) is visible as a measured split, not a guess. |
 | AR-03 | N | True-LRU vs tree-PLRU replacement-state area shall be compared at a fixed associativity (a small side-experiment reusing the PM-05/PM-08 parameters), since D-007 chose PLRU specifically to bound this cost and the claim should be checkable. |
-| PW-01 | N | Power shall be estimated with OpenSTA's `report_power` using switching-activity defaults, explicitly labelled as a static estimate, not a simulation-driven (SAIF/VCD) measurement. |
+| PW-01 | N | Power shall be estimated with OpenSTA's `report_power` using switching-activity defaults, explicitly labelled as a static estimate, not a simulation-driven (SAIF/VCD) measurement. **Done in Phase 8 and labelled:** `power.txt` of each timing point (the default L2 comes out at 2.11 W at a 10 ns clock, which assumes far more switching than a cache with one line written per cycle does; it is not a design estimate). |
 
 **Area: measured per unit at each synthesis point (`build/reports/summary.md`, Yosys `stat -liberty`, flat flip-flop arrays, no memory macros;
 D-037, D-038). AR-02 (tag/valid/dirty versus data array area) and AR-03 (true LRU versus tree-PLRU) are NOT YET MEASURED: the units are

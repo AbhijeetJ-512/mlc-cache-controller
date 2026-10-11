@@ -242,6 +242,16 @@ of the same structure is expected to be faster; L1's direct-mapped path has no w
 measurement** — Phase 8 STA will confirm or correct it, and any discrepancy will be explained in
 that phase's report rather than silently reconciled here.
 
+**Measured in Phase 8 (D-041, D-042; `build/reports/timing_summary.md`).** At one capacity, 8 KiB, with the netlists mapped for delay
+and no wire parasitics, the prediction is half right. *Confirmed:* the direct-mapped L1 is the fastest (5.757 ns on its limiting
+path, 5.316 ns on its hit path). *Contradicted:* L3's 8-way compare is not the longest; the 4-way L2 needs 8.515 ns (hit path 7.174 ns), the 8-way L3
+7.220 ns (6.317 ns), the 4-way L3 7.054 ns (6.040 ns); at the default sizes the 32 KiB 4-way L2 needs 9.168 ns and the 32 KiB 8-way L3 8.366 ns. Associativity does
+cost something, 0.166 ns (+2.4%) from 4 to 8 ways at the L3 (0.277 ns on the hit path), but the number of sets and the write path matter
+more: the L2 has the same capacity and twice the sets of the L3 (32 B lines against 64 B) and takes 4-byte forwards where the L3 takes half-lines, and this phase did not
+separate the two. The limiting path of the L1-D, L2 and L3 is not the hit path the prediction was about but an input-to-register path, from a low bit of
+`req_addr` through the tag compare to a same-cycle write into an array, and in the L2 and L3 about half of it is fan-out buffering of the address to the
+arrays. Every figure is an upper bound on frequency (no wires, ideal clock) and the buffering is ABC's serial chain, not a balanced tree.
+
 ---
 
 *Next document: `04_interfaces.md`*

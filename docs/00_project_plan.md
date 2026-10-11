@@ -194,9 +194,9 @@ complete, and documented," never to a pass/fail this session cannot produce (D-0
 | | |
 |---|---|
 | **Objective** | Know the critical path, not guess it. |
-| **Files** | `constraints/*.sdc`, `scripts/sta.tcl`, `build/reports/timing.txt`, `power_report.txt` |
-| **Work** | SDC with clock and I/O delays; OpenSTA setup/hold against `sky130hd_tt.lib`; Fmax by constraint sweep |
-| **Done when** | Worst slack, critical path and logic depth reported from checked-in report files (`make sta`) for each configuration; the tag-compare critical-path prediction from `03_microarchitecture.md` §5 compared against measurement and any discrepancy explained |
+| **Files** | `constraints/mlc.sdc`, `scripts/sta.tcl`, `scripts/sta_run.py`, `scripts/sta_summary.py`, `scripts/sta_selftest.py`, `scripts/abc_speed.script`, `scripts/abc_speed.constr`, `build/reports/<point>/{timing,power,reset,sta,sensitivity}.txt`, `build/reports/timing_summary.md` |
+| **Work** | A timing-driven ABC mapping (fan-out buffering and sizing: the Phase 7 netlists have none and an STA of them measures fan-out); SDC with clock and boundary delays; OpenSTA setup/hold against `sky130hd_tt.lib` one unit at a time; Fmax by a verified bracket; a self-test with known answers (D-041, D-042) |
+| **Done when** | Worst slack, critical path and logic depth reported from checked-in report files (`make synth-timing`, `make sta`) for the default configuration and four 8 KiB points; the prediction of `03_microarchitecture.md` §5 compared against measurement and the discrepancy explained. **Restated by D-042:** the rest of the capacity/associativity sweep is Phase 10, and nothing is claimed for a path through more than one unit or for the integrated top. |
 
 ---
 
