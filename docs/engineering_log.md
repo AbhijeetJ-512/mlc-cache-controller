@@ -1888,47 +1888,65 @@ synthesized netlists (TR-01 to TR-04). Four things stand in the way.
   liberty in which the 36 low-power-flow and probe cells carry `dont_use : true` (ABC honours it: no `lpflow` cell appears). The same nine
   checks run. It is used for every timing point, and four of them (`reset_sync`, `arbiter`, `adapter`, L1-I) pass their Tier-1 testbench as
   netlists (`make synth-timing`). The script has no `&dch`: in a scratch run on the 8 KiB L2 the version with it took 1,280 s for a
-  similar area (3,445,452 against 3,474,946 um^2) and the one without 191 s.
+  similar area (3,445,452 against 3,474,946 um^2) and the one without 184 s (`build/reports/l2_8k_w4_speed/run.txt`).
 - `constraints/mlc.sdc`: one ideal clock, no skew or uncertainty, no wire parasitics. Every data input arrives 0.35 ns after the clock
   edge (min and max) through an `inv_2`, every output must be ready 0.15 ns before the next edge into 0.033442 pF. The numbers stand
   for a neighbouring flip-flop of the same library (about its clock-to-output and its setup time). A unit without a clock port (the
-  adapter) gets a virtual clock of the same name.
-- `scripts/sta.tcl` reports, for each of the four classes of path (register to register, input to register, register to output, input to
-  output, which is the combinational hit path of PF-01) the worst setup and hold path; `check_setup` runs first and any OpenSTA warning
-  fails the run.
-- The reset input ports are a false-path source in the main analysis, and the reset network is analysed on its own (`reset.txt`): its
-  unbuffered period and fan-out are recorded beside the result, for P&R to buffer. In the integrated design the port is the output of
-  `reset_sync`'s flip-flop, so a path from it is a real synchronous path; its tree is not in the minimum period.
+  adapter) gets a virtual clock of the same name. The reset ports are the exception, below.
+- `scripts/sta.tcl` reports the worst setup and hold path of each of four disjoint classes of path (register to register, input to
+  register, register to output, input to output) and, for a cache controller, of `req2resp`: the part of input to output from the `req_*`
+  inputs to the `resp_*` outputs, which is the combinational hit path of PF-01. (The worst input-to-output path is not always a hit: the
+  L1-D's ends at `dn_req_addr`, the downstream request, and the arbiter's at `up0_req_ready`.) `check_setup` runs first and any OpenSTA
+  warning fails the run.
+- Every path that starts at a reset input port is a false path in the main analysis (the recovery and removal checks at the reset pins,
+  `rst_n` through logic to a flip-flop's D pin, `rst_n` to an output), and the port has an ideal input slew there: a false path removes a
+  check and not the slew OpenSTA propagates, and a reset net of 1,796 loads behind an `inv_2` otherwise slows the data paths that share a
+  gate with it (D-043, F1). The reset network is analysed on its own (`reset.txt`) with the port driven like every other input, in three
+  classes told apart by OpenSTA's path group: `reset_async` (recovery and removal), `reset_data` (`rst_n` through logic to a D pin) and
+  `reset2out`. The worst of the three, its unbuffered period, and the fan-out of the net are recorded beside the result, for P&R to
+  buffer. In the integrated design the port is the output of `reset_sync`'s flip-flop, so a path from it is a real synchronous path;
+  its tree is not in the minimum period.
 - *The minimum period is the base period (10 ns) minus the worst setup slack, and is then checked:* STA is run again 2% above it (no
   setup check may fail) and 2% below (one must). That is the constraint sweep of TR-02. The paths are fixed, so the slack is the
-  period minus a constant.
+  period minus a constant. The worst of the per-class periods must equal that number or the run fails, and a netlist older than anything
+  it is made from (the RTL, `synth.tcl`, the liberty and, for the timing-driven points, the ABC script, its constraints and the dont_use
+  liberty) is refused. `run.txt` records the SHA-256 of the checked-in liberty; the timing-driven points were mapped with the copy of it
+  that has `dont_use : true` on 36 cells, which `scripts/synth_run.py --dont-use-lib` regenerates in `build/lib/`.
 
 **Reason.** The mapping makes the number mean something: the L1-I goes from 51.5 ns to 4.17 ns, the arbiter from 7.00 to 1.86 and the
 adapter from 5.45 to 1.45.
 
 **Tradeoffs and limits.**
-- **Every period here is an upper bound on frequency**: ideal clock, no wires, no placement. It is also pessimistic in one way: ABC's
-  `buffer -c` builds a serial chain, not a balanced tree, so a net of about 1,000 loads gets 11 to 17 buffers in series. On the L2 and
-  L3 limiting paths that chain is 3.0 to 4.5 ns of 7 to 9 (the composition table of `timing_summary.md`). A tree would cost much less; what it
-  would cost is not measured.
+- **Every period here is an upper bound on frequency**: ideal clock, no wires, no placement. It is probably also pessimistic in one way: the
+  fan-out buffering is the mapping tool's (ABC's `buffer`, which limits fan-out to 10 by default), not a model of what place and route would
+  build. On the L2 and L3 limiting paths 17 buffers take 4.53 and 4.42 ns of 9.028 and 8.274, in runs of 12, 3 and 2 buffers (L2) and 10, 3 and 4 (L3),
+  the first run alone 2.99 and 2.76 ns (the composition table of `timing_summary.md`). What a tree built by P&R would cost is **NOT YET MEASURED**.
+  (The first version of this entry said that `buffer -c` builds a serial chain, so that a net of about 1,000 loads gets 11 to 17 buffers in
+  series. That was wrong twice: `-c` is ABC's wire-load switch, and the counts added up three separate nets; D-043, F5.)
 - **Units are analysed one at a time.** A path that crosses units (an L1's request through the arbiter into L2's tag compare and back) is
   not analysed, and so no frequency of the integrated hierarchy is claimed: **NOT YET MEASURED.** The integrated top cannot be mapped (D-038).
-- The boundary delays are assumptions; `make sta-sensitivity` shows their effect on four points. An input-limited period moves one for
-  one with the input delay (L1-D: 5.647, 5.997 and 6.647 ns at 0/0, 0.35/0.15 and 1.0/0.5 ns); hold is met in all three
-  cases (worst +0.081 ns at 0/0 on the L1-I).
-- The timing-driven mapping is smaller than Phase 7's on the large units and larger on the small ones: the 32 KiB L2 is 13,679,955
-  against 15,047,108 um^2 (887,109 against 2,249,289 cells), the 32 KiB 8-way L3 12,663,505 against 14,710,293, but the L1-I is 1,514,111
-  against 1,455,566 and the L1-D 1,548,375 against 1,496,114. Phase 7's area figures are those of its flow and stand; D-037's statement that
+- The boundary delays are assumptions; `make sta-sensitivity` shows their effect on four points. The input-to-register period moves one for
+  one with the input delay (L1-D: 5.579, 5.929 and 6.579 ns at 0/0, 0.35/0.15 and 1.0/0.5 ns), and the minimum period follows it until another class takes over
+  (at 1.0/0.5 ns the L1-D's is the input-to-output path, 6.605 ns, which moves with both delays: 5.579, 5.929 and 6.605 ns overall); hold is met in all three
+  cases (worst +0.081 ns, at 0.00/0.00 on l1_icache).
+- The timing-driven mapping is smaller than Phase 7's on the large units and larger on the two L1 caches: the 32 KiB L2 is 13,679,955
+  against 15,047,108 um^2 (887,109 against 2,249,289 cells), the 32 KiB 8-way L3 12,663,505 against 14,710,293, and the AXI4 fill engine
+  35,425 against 36,102, but the L1-I is 1,514,111 against 1,455,566 (+4.0%) and the L1-D 1,548,375 against 1,496,114 (+3.5%). Phase 7's area figures are those of its flow and stand; D-037's statement that
   `abc -fast` costs nothing in area is about the L1-D against ABC's full script, not about this mapping.
 - Power is OpenSTA's static estimate at its default switching activity and a 10 ns clock. It is not a simulation-driven figure and
   assumes far more switching than a cache with one line written per cycle does (the default L2 comes out at 2.11 W); it is recorded because
   PW-01 asks for it and is not usable as an estimate of a design.
 
-**Result.** `make sta-selftest` (in `make check`): a feed-through with an input delay of 1 ns and an output delay of 2 ns has a slack of
-exactly 7.0 ns; the rising and falling delays of an `inv_1` from OpenSTA equal the liberty-table values to five digits (0.09179 and
-0.06198 ns); the report parser gives the right slack and depth on a canned report; a combinational loop, an unconstrained output and a
-missing clock are each refused; the bracket accepts the true minimum period and refuses half and twice of it; a path from a reset port is
-absent from the main analysis and present in the reset-only one, including for a module whose output port is called `rst_n`.
+**Result.** `make sta-selftest` (in `make check`, about 10 s; extended after the review, D-043): a feed-through with an input delay of 1 ns and
+an output delay of 2 ns has a slack of exactly 7.0 ns; the rising and falling delays of an `inv_1` from OpenSTA equal the liberty-table
+values to five digits (0.09179 and 0.06198 ns); `write_sdc` of the project's own SDC shows 0.35 ns in, 0.15 ns out, an `inv_2` on every
+data input, 0.033442 pF on every output, the false path and the ideal slew on the reset ports (and, in the reset-only analysis, the drive
+and no false path), and `abc_speed.constr` agrees; each class of path finds the path built for it on a netlist with known start points,
+end points and depths; the reset classes are told apart on a netlist where the recovery check is the worse one; a reset net with 301 loads
+leaves a data path unchanged in the main analysis and changes it where the port is driven; the parser gives the right worst slack over two
+path groups, the right split of a path's time, the right buffer runs and the right reset fan-out on canned reports; a combinational loop,
+an unconstrained output, a missing clock and a stale netlist are each refused; the bracket accepts the true minimum period and refuses
+half and twice of it.
 
 ---
 
@@ -1940,52 +1958,119 @@ absent from the main analysis and present in the reset-only one, including for a
 associativity from capacity: the L1-D, the L2 4-way, and the L3 4-way and 8-way. The rest of the capacity and associativity sweep is
 Phase 10, which records area and frequency together. No integrated top (D-038, D-041). All figures are in `build/reports/timing_summary.md`.
 
-**Results** (minimum period; limiting class and its depth in combinational cells; hit path is the input-to-output class):
+**Results** (minimum period; limiting class and its depth in combinational cells, buffers included; "input to output" is the worst combinational path from any input to any
+output, "request to response" the part of it from the `req_*` inputs to the `resp_*` outputs of a cache controller, which is the hit path of PF-01):
 
-| Unit | Min period (ns) | Fmax bound (MHz) | Limiting class, depth | Hit path (ns) | Hold slack (ns) |
-|---|---|---|---|---|---|
-| reset synchroniser | 0.638 | 1,567 | register to output, 0 | - | 0.331 |
-| L1 to L2 arbiter | 1.859 | 538 | register to output, 4 | 1.766 | 0.517 |
-| L2-L3 adapter | 1.446 | 692 | input to output, 3 | 1.446 | 0.553 |
-| AXI4 fill engine | 2.495 | 401 | register to register, 7 | - | 0.481 |
-| L1-I, 4 KiB | 4.171 | 240 | register to output, 16 | 3.973 | 0.431 |
-| L1-D, 4 KiB | 5.997 | 167 | input to register, 25 | 5.605 | 0.427 |
-| L2, 32 KiB 4-way | 9.168 | 109 | input to register, 34 | 7.315 | 0.416 |
-| L3, 32 KiB 8-way (not the default L3) | 8.366 | 120 | input to register, 32 | 7.028 | 0.418 |
+| Unit | Min period (ns) | Fmax bound (MHz) | Limiting class, depth | Input to output (ns) | Request to response (ns) | Hold slack (ns) |
+|---|---|---|---|---|---|---|
+| reset synchroniser | 0.638 | 1,567 | register to output, 0 | - | - | 0.331 |
+| L1 to L2 arbiter | 1.859 | 538 | register to output, 4 | 1.766 | - | 0.517 |
+| L2-L3 adapter | 1.446 | 692 | input to output, 3 | 1.446 | - | 0.553 |
+| AXI4 fill engine | 2.495 | 401 | register to register, 7 | - | - | 0.481 |
+| L1-I, 4 KiB | 4.171 | 240 | register to output, 16 | 3.973 | 3.973 | 0.431 |
+| L1-D, 4 KiB | 5.929 | 169 | input to register, 23 | 5.605 | 4.673 | 0.427 |
+| L2, 32 KiB 4-way | 9.028 | 111 | input to register, 34 | 7.315 | 7.315 | 0.416 |
+| L3, 32 KiB 8-way (not the default L3) | 8.274 | 121 | input to register, 32 | 7.028 | 7.028 | 0.418 |
 
 **What the numbers say.**
-- *The critical path of the three caches that have a write path is input to register* (25, 34 and 32 cells): a low bit of `req_addr`
-  (a set-index bit) through the tag read and compare to a flip-flop in an array, i.e. a same-cycle write. In the L2 the first 3 ns of that path
-  is the index bit being fanned out to the read multiplexers by 12 buffers in series, followed by four levels of `mux4` for the tag read.
-- *Half of the L2 and L3 limiting paths is fan-out buffering* (4.53 of 9.17 ns in the L2, 4.42 of 8.37 in the L3; 17 buffers in series
-  each). With every fan-out buffer free the same paths would need 4.64 and 3.94 ns. That is a bound nothing reaches, and it says that
-  distributing the address to flip-flop arrays is what these numbers mostly measure (see D-041 on ABC's buffer chains).
-- *The reset net* has a fan-out of 1,796 at the default L2 and 965 at the L3; unbuffered it would need 27.9 ns and 15.0 ns. P&R must buffer it.
+- *The critical path of the three caches that have a write path is input to register* (23, 34 and 32 cells), from a low bit of `req_addr`
+  to a flip-flop's D pin. In the L2 and L3 it starts with a run of buffers (12 in the L2, 2.99 ns; 10 in the L3, 2.76 ns), then levels of `mux4`, an `xnor2` (the tag compare)
+  and a tree of gates, and ends after more buffers at the D pin. The netlists name flip-flops anonymously (`_1204658_`), so no report says which register that is, and
+  this phase does not claim it is a write into an array.
+- *About half of the L2's and L3's limiting paths is fan-out buffers*: 4.53 of 9.028 ns in the L2 and 4.42 of 8.274 ns in the L3, 17 buffers each, in runs of 12, 3 and 2 and of 10, 3 and 4.
+  The buffering is the mapping tool's; D-041 says what that does and does not mean.
+- *The hit path* (request to response): 3.973 ns in the L1-I (`req_addr[5]` to `resp_valid`, 18 cells), 4.673 in the L1-D, 7.315 in the L2 (to `resp_line[228]`, 29 cells) and
+  7.028 in the L3. In the L2 and L3 it is also the worst input-to-output path; in the L1-D the worst input-to-output path (5.605 ns) ends at `dn_req_addr`, the downstream request, and in the arbiter
+  at `up0_req_ready`. The `timing_summary.md` table "the worst path of each class" lists every start and end point.
+- *The reset net* has a fan-out of 1,796 at the default L2 and 965 at the L3; unbuffered it would need 27.889 ns and 15.032 ns (in the L2, 27.889 ns of that is the recovery
+  check and 25.571 ns `rst_n` through logic to a D pin: `reset.txt`). P&R must buffer it.
 - *Hold is met everywhere* at the assumed boundary (worst +0.331 ns) and, on the four points checked, also with no input delay.
 
 **The prediction of section 5, tested at 8 KiB.** The prediction was that L3's 8-way compare would give the longest hit path, L2's 4-way a
-shorter one and L1's direct-mapped one the shortest.
+shorter one and L1's direct-mapped one the shortest. The hit path is the request-to-response class.
 
-| Unit at 8 KiB | Sets | Min period (ns) | Hit path (ns) | Fan-out buffers on the limiting path (ns) | Multiplexers on it (ns) |
-|---|---|---|---|---|---|
-| L1-D, direct-mapped, 32 B lines | 256 | 5.757 | 5.316 | 1.58 | 0.31 |
-| L2, 4-way, 32 B lines | 64 | 8.515 | 7.174 | 3.96 | 1.61 |
-| L3, 4-way, 64 B lines | 32 | 7.054 | 6.040 | 3.64 | 1.17 |
-| L3, 8-way, 64 B lines | 16 | 7.220 | 6.317 | 2.96 | 2.69 |
+| Unit at 8 KiB | Sets | Min period (ns) | Request to response (ns) | Buffers on the limiting path (ns; cells) | Multiplexers on it (ns) | Other logic on it (ns) |
+|---|---|---|---|---|---|---|
+| L1-D, direct-mapped, 32 B lines | 256 | 5.545 | 4.292 | 1.74; 7 | 0.33 | 2.94 |
+| L2, 4-way, 32 B lines | 64 | 8.514 | 7.172 | 3.96; 15 | 1.61 | 2.46 |
+| L3, 4-way, 64 B lines | 32 | 7.052 | 6.040 | 3.64; 13 | 1.17 | 1.80 |
+| L3, 8-way, 64 B lines | 16 | 7.220 | 6.317 | 2.96; 11 | 2.69 | 1.06 |
 
-- *Confirmed:* the direct-mapped L1 is the fastest, on both the limiting path and the hit path.
-- *Contradicted:* L3's 8-way compare is not the longest. The L2 at the same capacity is slower than the 8-way L3 by 1.30 ns on the limiting path
-  and 0.86 ns on the hit path, and the same holds at 32 KiB (9.168 against 8.366 ns). The L2 has the same associativity as the 4-way L3 and is 1.46 ns slower.
-- *What associativity does cost:* the L3 from 4 to 8 ways needs 0.166 ns more (+2.4%) on the limiting path and 0.277 ns more (+4.6%) on the hit path, and its multiplexer time
-  on the limiting path rises from 1.17 to 2.69 ns, nearly cancelled by shorter buffer chains (3.64 to 2.96 ns) because it has fewer sets.
-- *Why the L2 is slower than the L3:* what differs between them at one capacity is the line size (32 B against 64 B, so the L2 has twice the sets and a
-  longer index fan-out: 15 buffers on its path against 13 and 11) and the write granularity (the L2 takes 4-byte forwards from L1 into its lines; the L3 takes whole half-lines).
-  This phase did not separate the two, and does not claim which matters more.
-- Because the buffer chains are ABC's, the ordering of the L2 and L3 here partly reflects chain length. With buffers free, the L2 needs 4.56 ns and the 8-way
-  L3 4.26 ns, and the 4-way L3 3.41: the L2 is still the slowest and the cost of associativity (0.85 ns from 4 to 8 ways) is more visible.
+- *Confirmed:* the direct-mapped L1 is the fastest, on both the limiting path (5.545 ns against 7.052 and more) and the hit path (4.292 ns against 6.040 and more).
+- *Contradicted:* L3's 8-way compare is not the longest. The L2 at the same capacity is slower than the 8-way L3 by 1.294 ns on the limiting path
+  and 0.855 ns on the hit path, and the same holds at 32 KiB (9.028 against 8.274 ns). The L2 has the same associativity as the 4-way L3 and is 1.462 ns slower on the limiting path and 1.132 ns on the hit path.
+- *What associativity does cost:* the L3 from 4 to 8 ways needs 0.168 ns more (2.4%) on the limiting path and 0.277 ns more (4.6%) on the hit path, with half the sets. On the limiting path the
+  multiplexer time rises by 1.52 ns (1.17 to 2.69), while the buffers fall by 0.68 ns (3.64 to 2.96) and the other logic by 0.74 ns (1.80 to 1.06); the two paths have different structure
+  (13 and 11 buffers in runs of 8, 1, 4 and 4, 5, 2), so this phase reports the totals and does not attribute them.
+- *Why the L2 is slower than the L3:* what differs between them at one capacity is the line size (32 B against 64 B, so the L2 has twice the sets; its limiting path has 15 buffers against 13 and 11) and the write granularity
+  (the L2 takes 4-byte forwards from L1 into its lines; the L3 takes whole half-lines). This phase did not separate the two, and does not claim which matters more.
+- There is no figure here for "the L2 and L3 with ideal buffering". The one this entry first had (the limiting path's period minus its buffer time) bounded one path and not the design: other
+  paths of the same units give larger figures (scratch computation from the regenerated `timing.txt` files: the 32 KiB L3's register-to-output path would still need 5.15 ns with its buffers free, against 3.85 ns for the limiting path; D-043, F4).
 
 **Not measured.** The timing of any path through more than one unit and of the integrated hierarchy; wire delay and clock skew (Phase 9); other corners (only
 `tt_025C_1v80` is used; the `ss` and `ff` libraries are on the machine); the capacity and associativity sweep (Phase 10). The sizing and tree that P&R would add.
+
+---
+
+## D-043 — The independent review of Phase 8: what it found, what changed, and what the self-test now catches
+
+**2026-10-11 · Phase 8**
+
+**Problem.** Before the push, a fresh reviewer (an independent agent in a separate checkout; it re-ran the synthesis and timing of five units end to end and recomputed
+every figure in D-041, D-042, the README, `03_microarchitecture.md` section 5 and `01_requirements.md` from the checked-in reports) found no wrong headline number, and eleven faults in
+how the numbers were made and described.
+
+| | Finding | Kind |
+|---|---|---|
+| F1 | The slew of the unbuffered reset net still reached the data paths: a false path removes a check, not the slew OpenSTA propagates. On the L2 limiting path a `nor2_1` (`_0621126_`) had a reset-derived slew of 3.41 ns at one input and an output slew of 0.498 ns (the reviewer's reading of the first run; 0.162 ns after the fix, `build/reports/l2_default_speed/timing.txt`). | measurement, about 0.1 ns on the L2 |
+| F2 | The self-test did not read the project's own SDC or the class reports. Of 35 deliberate breakages of the flow 15 were noticed and 20 were not, 16 of them real gaps (a changed input delay, a missing load, wrong class sets, ...). | assurance |
+| F3 | The buffers were called "the address"; a third of them are not the leading run. | overclaim |
+| F4 | "The period with every buffer free" used the limiting class's path only; other paths of the same unit give larger figures. | overclaim |
+| F5 | "ABC's `buffer -c` builds a serial chain": `-c` is the wire-load switch (`yosys-abc -c "buffer -h"`), and the reviewer found the buffer networks of the L1-I netlist to be trees (depth 5 or less, up to 10 children per buffer; a scratch measurement of the review). | wrong statement about a tool |
+| F6 | "Hit path" was the worst input-to-output path, which is not a hit on the L1-D (it ends at `dn_req_addr`) or the arbiter (`up0_req_ready`). | mislabel |
+| F7 | "A same-cycle write into an array": the flip-flops are anonymous, so no report shows an array write. And the multiplexer rise of 1.52 ns was called "nearly cancelled" by buffers that fall 0.68 ns. | overclaim |
+| F8 | `reset_data` repeated the recovery check, because `all_registers -data_pins` includes the asynchronous pins. | mislabel |
+| F9 | Stale or overstated text: `01_requirements.md` still said "Power: NOT YET MEASURED"; "the default configuration has been timed" while the L3 was 32 KiB; "75 min" counted only the base run of each point; "about 10 min" for the sensitivity runs had no report; "191 s" was 184 s; the mapping was "larger on the small ones" but the AXI4 engine is smaller; a cause was named for the L2-L3 gap that was not separated; "depth 34" includes 17 buffers. | documents |
+| F10 | The reset false path removes every path that starts at a reset port, not only the recovery, removal and `rst_n`-to-output checks. | understatement |
+| F11 | The staleness check ignored `abc_speed.constr`, the dont_use liberty and the RTL; the dont_use liberty was rebuilt only when missing; an old `reset.txt` or `sensitivity.txt` survived a run; `timing.txt` of the L1-I was 14 MB of violator lists; `run.txt` names the original liberty's hash and not the copy the timing-driven points were mapped with. | maintenance |
+
+**Decision.** Fix all eleven, regenerate every STA report, and replace the old claims; do not re-run the synthesis of the timing-driven points (the mapping did not change, and the
+reviewer's re-run of five of them reproduced every report file except peak memory and wall time). The four raw netlists were synthesised again, because branch checkouts had made
+them older than the files they are made from and the new staleness check refuses that; their `stat.txt` and `checks.txt` are identical, and their gate-level re-runs pass with the same
+numbers of checks.
+- *F1, F10.* In the main analysis the reset ports have `set_input_transition 0` and no driving cell, and every path from them is a false path; in the reset-only analysis they are driven by
+  the `inv_2` like every input (`constraints/mlc.sdc`). The self-test shows the effect: the arrival of a data path through a gate that also takes `rst_n` is the same with 1 and with 301 loads on
+  `rst_n` in the main analysis, and differs (0.419 and 0.521 ns) where the port is driven.
+- *F8.* The reset classes are told apart by OpenSTA's path group (`-path_group asynchronous` for recovery and removal, `clk` for the rest). In the L2 the recovery check needs
+  27.889 ns and `rst_n` through logic to a D pin 25.571 ns (`reset.txt`); the headline reset figure is the worst of the three classes and did not change.
+- *F2.* `sta_selftest.py` was rewritten (the list at the end of D-041). `sta_run.py` gained `measure()`, the function behind every report, and `class_consistency()`: the run fails when the
+  worst class period differs from the overall minimum period.
+- *New class, because of F6.* `req2resp`, the worst path from a `req_*` input to a `resp_*` output, measures the hit path the prediction of section 5 is about; the D-042 comparison uses it.
+- *F3, F4, F5, F7, F9.* Corrected in D-041, D-042, the README, `03_microarchitecture.md` section 5 and `01_requirements.md`. The composition table of `timing_summary.md` now lists the runs of
+  consecutive buffers and drops the "buffers free" column; a new table lists the start and end point and depth of the worst path of every class. `make sta` takes
+  94 min (5,629 s, the sum of `wall_seconds_total` in the 16 `sta.txt`; the base runs alone are 84 min), `make sta-sensitivity` 12 min.
+- *F11.* `sta_run.py` refuses a netlist older than its RTL, `synth.tcl`, the liberty and, for the timing-driven points, the ABC script, its constraints and the dont_use liberty;
+  `synth_run.py` rebuilds the dont_use liberty when it is older than the liberty; `sta_run.py` removes the old `reset.txt` and `sensitivity.txt`; the limits section no longer lists violators.
+  `run.txt` still records the hash of the checked-in liberty (D-041 says so).
+
+**Result.**
+- *Minimum periods that changed* (all from F1; the other 10 points, the hold slacks and the unbuffered reset figures are identical to the first run):
+
+| Point | First run (ns) | After the review (ns) | Change (ns) |
+|---|---|---|---|
+| l1_dcache_speed | 5.997 | 5.929 | -0.068 |
+| l2_default_speed | 9.168 | 9.028 | -0.140 |
+| l3_32k_w8_speed | 8.366 | 8.274 | -0.092 |
+| l1_dcache_8k_speed | 5.757 | 5.545 | -0.212 |
+| l2_8k_w4_speed | 8.515 | 8.514 | -0.001 |
+| l3_8k_w4_speed | 7.054 | 7.052 | -0.002 |
+
+  The L1-I did not change, as the reviewer found. The limiting endpoint of the two L1-D points moved to a neighbouring flip-flop (4 KiB: 25 to 23 cells; 8 KiB: 26 to 25); in every other point the limiting path is the same.
+  Every conclusion of D-042 stands: the L1 is the fastest, the L2 is the slowest, and the L3's 8-way compare is not the longest.
+- *Mutation experiment on the self-test* (`make sta-selftest-deep`, `scripts/sta_mutation.py`, 3 min; result in `build/reports/sta_selftest_deep.txt`): 61 single-edit variants of the flow (the reviewer's 35,
+  adapted, and more on the new code: the SDC constants, the reset slew, the path groups, the classes, `measure()`, the staleness check, the buffer runs), each in its own copy, each run through the self-test.
+  58 are noticed. Not noticed: `limits_violators_back` (it only makes `timing.txt` larger) and `depth_counts_flops` and `base_period_5` (equivalent mutants: the depth regex never matches a flip-flop's output pin, and the minimum period does not depend on the base period). The run fails if any other variant passes, so a later change to the flow that the self-test cannot see is caught.
+- `make check`: 594 Tier-1 checks and the self-tests pass in 220 s.
 
 ---
 

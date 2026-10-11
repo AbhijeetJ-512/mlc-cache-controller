@@ -286,14 +286,15 @@ liberty file already used for synthesis/STA.
 | TR-03 | M | The critical path shall be identified, reported, and explained (expected to be the L3 tag-compare-and-way-select, being the widest associativity — to be confirmed, not assumed, against measurement). |
 | TR-04 | M | All timing numbers in all documents shall be traceable to a checked-in report file. Unmeasured values shall be labelled **NOT YET MEASURED**. |
 
-**Status after Phase 8** (`build/reports/timing_summary.md`; D-041, D-042).
+**Status after Phase 8** (`build/reports/timing_summary.md`; D-041, D-042, D-043).
 - TR-01: met. OpenSTA 2.7.0 on the synthesized netlists (the raw ones of Phase 7 and, for a result that means something, the timing-driven ones of
   `make synth-timing`) against `sky130hd_tt.lib`, one unit at a time on an ideal clock (`constraints/mlc.sdc`).
-- TR-02: met for the default configuration and four 8 KiB points: the minimum period is the base period minus the worst setup slack and is confirmed by
+- TR-02: met for the default configuration (the L3 at 32 KiB, not the default 256 KiB) and four 8 KiB points: the minimum period is the base period minus the worst setup slack and is confirmed by
   STA 2% above (no violation) and 2% below (one). The capacity and associativity sweep is Phase 10.
-- TR-03: met for those points. The critical path of the L1-D, L2 and L3 is an input-to-register path from a low bit of the address through the tag
-  compare to a same-cycle array write (25, 34 and 32 cells); the L1-I's is register to output (16 cells). The prediction that the L3's 8-way compare would be
-  the longest hit path is **contradicted** (`03_microarchitecture.md` section 5): the L2's is.
+- TR-03: met for those points. The critical path of the L1-D, L2 and L3 is an input-to-register path from a low bit of the address to a flip-flop's D pin (in the
+  L2 and L3 through levels of `mux4` and an `xnor2` tag compare) (23, 34 and 32 cells; the netlists name flip-flops anonymously, so which register is not in the reports); the L1-I's is register to output (16 cells).
+  The hit path, measured as the worst request-to-response path, is 3.973, 4.673, 7.315 and 7.028 ns for the L1-I, L1-D, L2 and L3. The prediction that the L3's 8-way compare
+  would be the longest hit path is **contradicted** (`03_microarchitecture.md` section 5): the L2's is.
 - TR-04: every figure is in a checked-in report. **Not measured:** the timing of any path through more than one unit and of the integrated hierarchy,
   wire delay and clock skew (Phase 9), other corners, and the sizing and buffer tree that P&R adds. Every period is an upper bound on frequency.
 
@@ -310,7 +311,8 @@ liberty file already used for synthesis/STA.
 
 **Area: measured per unit at each synthesis point (`build/reports/summary.md`, Yosys `stat -liberty`, flat flip-flop arrays, no memory macros;
 D-037, D-038). AR-02 (tag/valid/dirty versus data array area) and AR-03 (true LRU versus tree-PLRU) are NOT YET MEASURED: the units are
-flattened before mapping, so the arrays' share is not separable from the logic around them (Phase 10). Power: NOT YET MEASURED.**
+flattened before mapping, so the arrays' share is not separable from the logic around them (Phase 10). Power: OpenSTA's static estimate exists for each
+timing point (PW-01, `power.txt`); a simulation-driven power figure is NOT YET MEASURED.**
 
 ---
 

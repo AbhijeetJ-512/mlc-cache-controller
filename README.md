@@ -8,7 +8,7 @@ memory-side interface. Synthesis, STA, and place-and-route all target **Sky130HD
 
 > **Project status: Phase 8 of 12 (Phases 5 and 6, the UVM tier and the formal properties, are deferred at the project
 > owner's request) — every unit is built and Tier-1-verified, the units are wired into one IP, each unit has been
-> synthesized to Sky130HD, and the default configuration has been timed with OpenSTA.** `make check` runs the parameter guards, a
+> synthesized to Sky130HD, and each unit has been timed with OpenSTA (the L3 at 32 KiB, not at its default 256 KiB).** `make check` runs the parameter guards, a
 > structural check of the top, 13 Tier-1 testbenches (594 checks, logs checked in under `sim/logs/`), the Yosys elaboration check, an RTL
 > coding-rule check and the self-tests of the synthesis and timing flows, all passing, in about three and a half minutes (187 to 220 s across
 > runs). `make synth` and `make synth-sweep` map every unit at its default configuration and at 11 sweep points to Sky130HD with zero latches,
@@ -133,9 +133,10 @@ make synth-gatesim     # the four Tier-1 tests that use only ports, run on the s
 make synth-stuckat     # tie every cell output of the arbiter and adapter netlists to 0 and 1 and run their tests (needs make synth first)
 make synth-selftest-deep  # break each of the flow's checks in turn in a copy; the self-test must notice every time (2 min)
 make synth-timing      # timing-driven mapping of the default configuration and four 8 KiB points (49 min of synthesis)
-make sta               # OpenSTA on those netlists and four raw ones: minimum period, critical path, hold, power (75 min; needs make synth and make synth-timing)
-make sta-sensitivity   # how the minimum period moves with the boundary delays, on four cheap points (about 10 min)
-make sta-selftest      # the timing flow's known answers and refused cases (part of make check, about 5 s)
+make sta               # OpenSTA on those netlists and four raw ones: minimum period, critical path, hold, power (94 min; needs make synth and make synth-timing)
+make sta-sensitivity   # how the minimum period moves with the boundary delays, on four cheap points (12 min)
+make sta-selftest-deep # break the timing flow in about sixty ways, one per copy; its self-test must notice each (3 min)
+make sta-selftest      # the timing flow's known answers, the constants its SDC applies, each class of path and each refused case (part of make check, about 10 s)
 ```
 
 A test passes only if its simulation exits cleanly, prints no `FAIL` line, and prints at least one
@@ -171,12 +172,12 @@ What the numbers say, and what they do not:
 - The flow's cost is part of the result. The default L2 takes just under ten minutes and 9 GiB; for L2 and for L3, peak memory doubles with each doubling of capacity (2.3, 4.5 and 9.0 GiB at 8, 16 and 32 KiB).
 - Not synthesized: the default L3 (above) and the integrated top, which is wiring only. No whole-hierarchy area is claimed.
 - Timing is in the next section; place and route is **NOT YET MEASURED** (Phase 9).
-- The four unit testbenches that use only ports (`reset_sync`, L1-I, the adapter, the arbiter) also pass, with the same testbench files, on the synthesized
-  netlists. The other four units (L1-D, L2, L3, the AXI4 engine) have testbenches that read internal state and have **no gate-level evidence**.
+- The four unit testbenches that use only ports (`reset_sync`, L1-I, the adapter, the arbiter) also pass, with the same testbench files and the same
+  numbers of checks (4, 4, 41 and 45), on the synthesized netlists; the L1-I's has only 4 checks on its 162,596 cells, so that is thin evidence for it. The other four units (L1-D, L2, L3, the AXI4 engine) have testbenches that read internal state and have **no gate-level evidence**.
 
 ## Timing results (OpenSTA 2.7.0, Sky130HD typical corner)
 
-Measured by `make synth-timing` and `make sta`; all of it, with the four classes of path, hold, power and the reset network, is in
+Measured by `make synth-timing` and `make sta`; all of it, with the classes of path, hold, power and the reset network, is in
 [`build/reports/timing_summary.md`](build/reports/timing_summary.md). Each unit is mapped for delay (fan-out buffering and sizing), then analysed alone on one ideal
 clock with a 0.35 ns input delay and a 0.15 ns output delay (`constraints/mlc.sdc`).
 
@@ -187,19 +188,24 @@ clock with a 0.35 ns input delay and a 0.15 ns output delay (`constraints/mlc.sd
 | L2-L3 adapter | 1.446 | 692 | input to output, 3 cells | 0.553 |
 | AXI4 fill engine | 2.495 | 401 | register to register, 7 cells | 0.481 |
 | L1-I, 4 KiB | 4.171 | 240 | register to output, 16 cells | 0.431 |
-| L1-D, 4 KiB | 5.997 | 167 | input to register, 25 cells | 0.427 |
-| L2, 32 KiB 4-way | 9.168 | 109 | input to register, 34 cells | 0.416 |
-| L3, **32 KiB** 8-way (not the default L3) | 8.366 | 120 | input to register, 32 cells | 0.418 |
+| L1-D, 4 KiB | 5.929 | 169 | input to register, 23 cells | 0.427 |
+| L2, 32 KiB 4-way | 9.028 | 111 | input to register, 34 cells | 0.416 |
+| L3, **32 KiB** 8-way (not the default L3) | 8.274 | 121 | input to register, 32 cells | 0.418 |
 
 - **Every figure is an upper bound on frequency**, not what a built chip would run at: the clock is ideal and there are no wires. Each unit is analysed
   alone, so a path that crosses units (an L1's request through the arbiter into L2) is not analysed and no frequency of the whole is claimed.
 - **Without buffering the numbers mean nothing.** The unbuffered Phase 7 netlist of the L1-I needs 51.5 ns (two minimum-size gates drive fan-outs of 511 and 261); mapped for
   delay it needs 4.17 ns. The arbiter goes from 7.00 to 1.86 ns.
-- **About half of the L2 and L3 limiting paths is the address being fanned out to the flip-flop arrays** (4.5 of 9.2 ns, 17 buffers in series; ABC builds a chain, not a tree), so the
-  L2 and L3 numbers are pessimistic there and optimistic about wires. With every fan-out buffer free they would need 4.6 and 3.9 ns, a bound nobody reaches.
-- **The prediction that the L3's 8-way compare is the longest hit path is contradicted** (`docs/03_microarchitecture.md` section 5, D-042): at 8 KiB the direct-mapped L1-D needs 5.76 ns, the
-  4-way L2 8.52, the 4-way L3 7.05 and the 8-way L3 7.22. Associativity costs 0.17 ns (2.4%) from 4 to 8 ways at the L3, less than the difference between the L2 and L3 (line size and write path).
-- The reset net (a fan-out of up to 1,796) is not buffered by this flow and is a false path in the figures above; its unbuffered period is recorded separately for P&R.
+- **Fan-out buffers are about half of the L2 and L3 limiting paths**: 17 buffers take 4.5 of 9.0 ns in the L2 and 4.4 of 8.3 ns in the L3 (runs of
+  12, 3 and 2 buffers, and of 10, 3 and 4; the first run alone is 3.0 and 2.8 ns). The buffering is the mapping tool's, not a model of what place and route would build, so those two figures
+  are pessimistic there and optimistic about wires; what a better tree would give is **NOT YET MEASURED**.
+- **The prediction that the L3's 8-way compare is the longest hit path is contradicted** (`docs/03_microarchitecture.md` section 5, D-042). The hit path is taken as the worst path from a request
+  input to a response output (`req2resp`). At 8 KiB it is 4.29 ns for the direct-mapped L1-D, 7.17 for the 4-way L2, 6.04 for the 4-way L3 and
+  6.32 for the 8-way L3: the direct-mapped L1 is the fastest, as predicted, and the L2 is the slowest. Going from 4 to 8 ways costs the L3 0.28 ns
+  (4.6%) on that path and 0.17 ns (2.4%) on the limiting path, with half the sets. The L2 and L3
+  differ in line size and write granularity; this phase did not separate those from the effect of capacity.
+- The reset net (a fan-out of up to 1,796) is not buffered by this flow. Every path that starts at a reset port is a false path in the figures above, and the port has an ideal slew there; the net's
+  unbuffered period is recorded separately for P&R.
 - Power in the reports is OpenSTA's static estimate at its default switching activity, not a design estimate (D-041).
 
 ## Verification: split by test level, not just by tool
