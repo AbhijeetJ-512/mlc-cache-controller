@@ -1,0 +1,1 @@
+gatesim adapter: PASS, 41 checks on the synthesised netlist (800 cells); the RTL run of the same testbench has 41 checks

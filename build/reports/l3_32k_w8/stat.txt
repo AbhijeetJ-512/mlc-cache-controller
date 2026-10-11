@@ -1,0 +1,57 @@
+
+19. Printing statistics.
+
+=== l3_cache_ctrl ===
+
+   Number of wires:             1916356
+   Number of wire bits:         2190832
+   Number of public wires:        2140
+   Number of public wire bits:  276616
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:             2189987
+     sky130_fd_sc_hd__a2111oi_0      8
+     sky130_fd_sc_hd__a211oi_1   62722
+     sky130_fd_sc_hd__a21boi_0      16
+     sky130_fd_sc_hd__a21o_2        78
+     sky130_fd_sc_hd__a21oi_1   188066
+     sky130_fd_sc_hd__a22o_2         7
+     sky130_fd_sc_hd__a22oi_1      286
+     sky130_fd_sc_hd__a2bb2oi_1   1792
+     sky130_fd_sc_hd__a31oi_1        3
+     sky130_fd_sc_hd__a41o_2        89
+     sky130_fd_sc_hd__a41oi_1        2
+     sky130_fd_sc_hd__and2_2         1
+     sky130_fd_sc_hd__clkinv_1  273306
+     sky130_fd_sc_hd__conb_1         6
+     sky130_fd_sc_hd__dfrtp_1      963
+     sky130_fd_sc_hd__dfxtp_1   273747
+     sky130_fd_sc_hd__mux2_2       220
+     sky130_fd_sc_hd__mux2i_1     9615
+     sky130_fd_sc_hd__nand2_1    54654
+     sky130_fd_sc_hd__nand3_1     1076
+     sky130_fd_sc_hd__nand3b_1      26
+     sky130_fd_sc_hd__nand4_1      410
+     sky130_fd_sc_hd__nor2_1    686164
+     sky130_fd_sc_hd__nor3_1       672
+     sky130_fd_sc_hd__nor3b_1        1
+     sky130_fd_sc_hd__nor4_1       399
+     sky130_fd_sc_hd__nor4b_1        1
+     sky130_fd_sc_hd__o2111ai_1     63
+     sky130_fd_sc_hd__o211ai_1     142
+     sky130_fd_sc_hd__o21a_1        87
+     sky130_fd_sc_hd__o21ai_0   363910
+     sky130_fd_sc_hd__o21bai_1  262696
+     sky130_fd_sc_hd__o221ai_1     291
+     sky130_fd_sc_hd__o22ai_1     7054
+     sky130_fd_sc_hd__o2bb2ai_1   1280
+     sky130_fd_sc_hd__o31ai_1       22
+     sky130_fd_sc_hd__o41ai_1       11
+     sky130_fd_sc_hd__or2_2         10
+     sky130_fd_sc_hd__or2b_2         3
+     sky130_fd_sc_hd__xnor2_1        1
+     sky130_fd_sc_hd__xor2_1        87
+
+   Chip area for module '\l3_cache_ctrl': 14710293.338064
+

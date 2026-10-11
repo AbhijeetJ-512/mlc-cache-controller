@@ -1,0 +1,1 @@
+gatesim arbiter: PASS, 45 checks on the synthesised netlist (108 cells); the RTL run of the same testbench has 45 checks

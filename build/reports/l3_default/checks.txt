@@ -1,0 +1,3 @@
+no black box in the RTL (SR-05)
+no tri-state driver in the RTL (SR-02)
+no undriven or multiply-driven net and no combinational loop in the RTL (SR-03, SR-06)

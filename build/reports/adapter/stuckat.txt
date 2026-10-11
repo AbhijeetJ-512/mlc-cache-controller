@@ -1,0 +1,9 @@
+point: adapter
+testbench: tb_adapter (working tree)
+checks on the fault-free netlist: 41
+cells: 800
+faults (output pin x stuck value): 1600
+no-op faults, not simulated (a tie cell tied to its own constant): 32
+faults that change the circuit and were simulated: 1568
+detected: 1568
+survived: 0

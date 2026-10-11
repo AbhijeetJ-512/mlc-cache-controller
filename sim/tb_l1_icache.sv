@@ -45,6 +45,7 @@ module tb_l1_icache;
     @(posedge clk);
     req_valid <= 1'b0;
     wait (resp_valid);
+    #1;                       // let resp_rdata settle: on a gate-level netlist it trails resp_valid by a few delta cycles (D-039)
     rdata = resp_rdata;
     @(posedge clk);
   endtask

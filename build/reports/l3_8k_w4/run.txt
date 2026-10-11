@@ -1,0 +1,12 @@
+point: l3_8k_w4
+top: l3_cache_ctrl
+params: CAPACITY_B=8192 WAYS=4
+package_overrides: (none)
+abc: fast
+status: ok
+reason: -
+wall_seconds: 128
+peak_rss_kib: 2350208
+mem_cap_kib: 12000000
+yosys: Yosys 0.33 (git sha1 2584903a060)
+liberty_sha256: 92eb4e93a3d4c2563018ac81cdec2f02fdeaced9b39337ed5c141fa63e0ad8f8

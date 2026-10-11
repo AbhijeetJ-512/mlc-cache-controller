@@ -6,15 +6,17 @@ and L3 with tree-PLRU replacement, a custom valid/ready CPU-side interface, and 
 memory-side interface. Synthesis, STA, and place-and-route all target **Sky130HD** via
 **Yosys + OpenSTA + OpenROAD**, in a single Makefile matching this portfolio's `Full-Adder` flow.
 
-> **Project status: Phase 4 of 12 — every unit is built and Tier-1-verified, and they are now wired into
-> one IP: the L1 controllers (I$ and D$), an arbiter that lets them share L2, the shared L2/L3
-> write-back controller, the tree-PLRU module, the L2 to L3 line-size adapter, the AXI4 fill engine and
-> the structural top `mlc_cache_top`.** `make check` runs the parameter guards, a structural check of the
-> top, 13 Tier-1 testbenches (581 checks, logs checked in under `sim/logs/`) and the Yosys elaboration
-> check (zero latches or tristates; the L2 and L3 arrays inferred as memories), all passing, in about
-> three and a half minutes (214 s on the last run; 187 to 214 s across runs). The integrated top **elaborates cleanly but has not been simulated**: its functional
-> behaviour will be verified only by the Phase 5 UVM tier. Synthesis, timing, area and P&R figures are
-> **NOT YET MEASURED**; the UVM tier is **NOT YET RUN (external simulator required)**.
+> **Project status: Phase 7 of 12 (Phases 5 and 6, the UVM tier and the formal properties, are deferred at the project
+> owner's request) — every unit is built and Tier-1-verified, the units are wired into one IP, and each unit has been
+> synthesized to Sky130HD.** `make check` runs the parameter guards, a structural check of the top, 13 Tier-1 testbenches
+> (594 checks, logs checked in under `sim/logs/`), the Yosys elaboration check, an RTL coding-rule check and the synthesis flow's self-test, all
+> passing, in about three and a half minutes (219 s on the last run; 187 to 219 s across runs). `make synth` and `make synth-sweep` map every unit at its default
+> configuration and at 11 sweep points to Sky130HD with zero latches, tri-states, undriven or multiply-driven nets or unlisted
+> warnings; the results are in [`build/reports/summary.md`](build/reports/summary.md). **Two things were not synthesized:
+> the default 256 KiB L3 (it ran out of memory under a 12,000,000 KiB cap, so its area is NOT MEASURED; L3 is measured up to 32 KiB)
+> and the integrated top (it is wiring only).** The integrated top **elaborates cleanly but has not been simulated**: its
+> functional behaviour will be verified only by the UVM tier. Timing, power and place-and-route figures are **NOT YET
+> MEASURED**; the UVM tier is **NOT YET RUN (external simulator required)**.
 > Every number in this repository either cites a checked-in tool report, is labelled
 > **NOT YET MEASURED** (a locally-runnable figure that just hasn't been produced yet), or
 > **NOT YET RUN (external simulator required)** (the UVM verification tier — see below). See
@@ -65,7 +67,7 @@ reasoning and the accepted tradeoff recorded in
 | [`docs/02_architecture.md`](docs/02_architecture.md) | System architecture: hierarchy diagram, per-level address partitioning (derived, not asserted), module list, data flow |
 | [`docs/03_microarchitecture.md`](docs/03_microarchitecture.md) | Per-controller FSMs, the tree-PLRU algorithm with a worked example, the line-size adapter, the AXI4 fill engine, the L1 arbiter and the top-level ports |
 | [`docs/04_interfaces.md`](docs/04_interfaces.md) | Signal-level CPU-side, inter-level, and AXI4 memory-side interface specification |
-| [`docs/engineering_log.md`](docs/engineering_log.md) | Every architectural decision: options considered, decision, reason, and the tradeoff accepted — D-001 through D-036 |
+| [`docs/engineering_log.md`](docs/engineering_log.md) | Every architectural decision: options considered, decision, reason, and the tradeoff accepted — D-001 through D-039 |
 
 ## Repository layout
 
@@ -87,13 +89,16 @@ mlc_cache_controller/
 │   └── top/        mlc_cache_top.sv (structural only: instances and wires, checked by scripts/check_top.py)
 ├── sim/            Tier-1 module-level testbenches, behavioural stubs, an AXI4 memory model,
 │                   parameter-guard cases, and checked-in logs (sim/logs/)
-├── scripts/        lint.ys (Yosys elaboration check), check_top.py, gen_plru_tables.py; synthesis/STA/P&R
-│                   scripts arrive in Phases 7-9
+├── scripts/        lint.ys (Yosys elaboration check), check_top.py, gen_plru_tables.py; synth.tcl (the synthesis
+│                   flow), synth_run.py (the table of synthesis points, the log check, the gate-level re-run),
+│                   synth_summary.py, synth_selftest/; STA and P&R scripts arrive in Phases 8-9
+├── sky130hd/       the Sky130HD typical-corner liberty the flow reads (origin and SHA-256 in its README)
+├── build/reports/  checked-in synthesis evidence: one directory per synthesis point, and summary.md
 ├── docs/           requirements, architecture, microarchitecture, interfaces, engineering log,
 │                   and per-phase implementation plans (docs/superpowers/plans/)
-├── Makefile        check, sim, test-<name>, elab, top, lint, list, clean (flow targets arrive with their phases)
+├── Makefile        check, sim, test-<name>, elab, top, lint, list, clean, and the synth-* targets
 └── tb_uvm/, assertions/, formal/, constraints/, config/,
-    sky130hd/, build/, pnr_results/, results/               planned, Phases 5-10
+    pnr_results/, results/                                  planned, Phases 5-10
 ```
 
 ## Testing and checking
@@ -108,12 +113,58 @@ make list              # the registered testbenches
 make elab              # bad parameter sets are rejected, good ones accepted (about 30 s)
 make top               # mlc_cache_top is structural only and elaborates under Icarus -Wall with no warnings (under 1 s)
 make lint              # Yosys elaboration check, zero latches/tristates (about 170 s)
-make clean             # remove build products; the tracked logs in sim/logs/ stay
+make rules             # rtl/ uses only always_comb and always_ff @(posedge clk ...): no incomplete sensitivity list, no gated clock
+make synth-selftest    # each of the synthesis flow's checks stops the module built to break it (part of make check, about 10 s)
+make clean             # remove build products; the tracked logs in sim/logs/ and build/reports/ stay
+```
+
+Synthesis is separate from `make check` because it takes tens of minutes (it needs 9.4 GiB of memory for its largest point):
+
+```bash
+make synth             # every unit at its default configuration (24 min of synthesis), then the gate-level re-runs
+make synth-sweep       # the 11-point capacity / associativity sweep (56 min)
+make synth-l3-default  # attempt the default 256 KiB L3; records an out-of-memory result (4 min)
+make synth-abc-compare # the L1-D through ABC's full script, to compare with the fast one (9 min)
+make synth-gatesim     # the four Tier-1 tests that use only ports, run on the synthesized netlists (needs make synth first)
+make synth-stuckat     # tie every cell output of the arbiter and adapter netlists to 0 and 1 and run their tests (needs make synth first)
+make synth-selftest-deep  # break each of the flow's checks in turn in a copy; the self-test must notice every time (2 min)
 ```
 
 A test passes only if its simulation exits cleanly, prints no `FAIL` line, and prints at least one
 `PASS`. Each run's full output goes to `sim/logs/<name>.log`. To add a testbench, add one
 `$(call register,<name>,<sources>)` line to the Makefile's registry (D-022).
+
+## Synthesis results (Sky130HD, Yosys 0.33)
+
+Measured by `make synth` and `make synth-sweep`; all of it, with cell counts, flip-flop counts, wall time and peak memory, is in
+[`build/reports/summary.md`](build/reports/summary.md). Area is Yosys's `stat -liberty` cell area of each unit mapped on its own
+at the typical corner.
+
+| Unit | Area (um^2) | Cells | Flip-flops |
+|---|---|---|---|
+| L1-I, 4 KiB direct-mapped | 1,455,566 | 162,596 | 35,491 |
+| L1-D, 4 KiB direct-mapped | 1,496,114 | 166,059 | 35,596 |
+| L2, 32 KiB 4-way | 15,047,108 | 2,249,289 | 284,763 |
+| L3, **32 KiB** 8-way (the largest L3 that completes; **not** the default L3) | 14,710,293 | 2,189,987 | 274,710 |
+| L2-L3 adapter | 3,323 | 800 | 0 |
+| L1 to L2 arbiter | 1,026 | 108 | 3 |
+| AXI4 fill engine | 36,102 | 5,511 | 554 |
+| Reset synchroniser | 54 | 3 | 2 |
+| **L3, 256 KiB 8-way (default)** | **NOT MEASURED: out of memory under a 12,000,000 KiB cap after 252 s** | | |
+
+What the numbers say, and what they do not:
+
+- **There are no memory macros in this flow, so every stored bit is a flip-flop plus multiplexing.** The flip-flop count is the
+  number of stored bits plus 35 to 856 control flip-flops at every cache point, so the arrays are intact, and flip-flops are only
+  37 to 49% of the area; the rest is the write-enable and read multiplexing around them. A design built on SRAM macros would look
+  different, and no figure for one is claimed here.
+- Area follows capacity: L2 is 3,829,883, 7,608,102 and 15,047,108 um^2 at 8, 16 and 32 KiB. Associativity costs little: L2 at 32 KiB
+  is 14,997,923, 15,047,108 and 15,071,885 um^2 at 2, 4 and 8 ways.
+- The flow's cost is part of the result. The default L2 takes just under ten minutes and 9 GiB; for L2 and for L3, peak memory doubles with each doubling of capacity (2.3, 4.5 and 9.0 GiB at 8, 16 and 32 KiB).
+- Not synthesized: the default L3 (above) and the integrated top, which is wiring only. No whole-hierarchy area is claimed.
+- Timing, power and place-and-route are **NOT YET MEASURED** (Phases 8 and 9).
+- The four unit testbenches that use only ports (`reset_sync`, L1-I, the adapter, the arbiter) also pass, with the same testbench files, on the synthesized
+  netlists. The other four units (L1-D, L2, L3, the AXI4 engine) have testbenches that read internal state and have **no gate-level evidence**.
 
 ## Verification: split by test level, not just by tool
 
@@ -146,17 +197,22 @@ See D-013 in `docs/engineering_log.md` for the full reasoning, including the dir
 | Tool | Status | Use |
 |---|---|---|
 | Icarus Verilog 12.0 | installed | Tier-1 smoke-test simulator |
-| Yosys 0.33 | installed | Synthesis, target Sky130HD |
+| Yosys 0.33 | installed | Synthesis, target Sky130HD (`yosys -c` runs `scripts/synth.tcl`) |
 | OpenSTA 2.7.0 | installed | Static timing analysis |
 | OpenROAD v2.0-25346 | **installed, verified runnable** | Place and route, target Sky130HD |
-| Python 3.13 | installed | `make top` (`scripts/check_top.py`), the PLRU table generator |
-| Sky130HD liberty/LEF | present on disk | Copied into `sky130hd/` |
+| Python 3.13 | installed | `make top` (`scripts/check_top.py`), the synthesis driver and summary, the PLRU table generator |
+| Sky130HD liberty | **vendored** in `sky130hd/` | Synthesis; the LEF files are added with place and route (Phase 9) |
 | Class-capable SV simulator (VCS/Questa/Xcelium) + UVM library | **not installed** | Required only for `tb_uvm/`, supplied externally by the user |
 
 ## Reproducing the numbers in this README
 
-There are no performance, area or timing numbers yet — nothing has been synthesized or measured.
-The only checked-in results so far are the Tier-1 pass/fail logs from Phases 1-4: `make sim` regenerates
-`sim/logs/*.log`, and `make lint` re-runs the Yosys elaboration check. Every command that will
-eventually produce a number is specified in the phase table in `docs/00_project_plan.md`, so
-each claim will be checkable the moment it exists — per this project's `NOT YET MEASURED` policy.
+- **Test counts and the pass/fail verdicts:** `make check` (about three minutes); `make sim` regenerates `sim/logs/*.log`.
+- **Synthesis figures:** `make synth` and `make synth-sweep` rewrite `build/reports/<point>/{stat,checks,run}.txt` and `summary.md`.
+  `stat.txt` is Yosys's own report, `checks.txt` lists the assertions that passed, `run.txt` records the command's outcome, wall time and
+  peak memory. Area and cell counts reproduce exactly; wall time and memory depend on the machine (the figures here are from a
+  15 GiB machine that was also running other work).
+- **The default L3's out-of-memory result:** `make synth-l3-default`. It depends on the machine and on the 12,000,000 KiB cap in
+  `scripts/synth_run.py`.
+- **Timing, power, place and route, and the UVM tier:** nothing yet. Every command that will produce one of those numbers is specified
+  in the phase table in `docs/00_project_plan.md`, so each claim will be checkable the moment it exists, per this project's
+  `NOT YET MEASURED` policy.

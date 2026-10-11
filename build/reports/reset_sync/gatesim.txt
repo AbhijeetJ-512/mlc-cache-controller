@@ -1,0 +1,1 @@
+gatesim reset_sync: PASS, 4 checks on the synthesised netlist (3 cells); the RTL run of the same testbench has 4 checks
