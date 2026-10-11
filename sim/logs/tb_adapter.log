@@ -36,6 +36,8 @@ PASS: write-back to 0xffffffc0: data, address, WE and all-ones strobes pass thro
 PASS: write-back to 0xffffffe0: data, address, WE and all-ones strobes pass through
 PASS: write-back to 0x12345fbf: data, address, WE and all-ones strobes pass through
 PASS: write-back to 0x12345f9f: data, address, WE and all-ones strobes pass through
+PASS: write-back data with every bit 0 reaches L3 unchanged
+PASS: write-back data with every bit 1 reaches L3 unchanged
 PASS: a read request reaches L3 as a read
 ** ALL TESTS PASSED **
-sim/tb_adapter.sv:114: $finish called at 40000 (1ps)
+sim/tb_adapter.sv:126: $finish called at 42000 (1ps)

@@ -71,7 +71,7 @@ module tb_adapter;
     check(l2_resp_line === pat(8'h21), "lower half tracks a new L3 line");
 
     // ---- every bit of each half can be 1 and can be 0 while the other half is the opposite, under either select ----
-    // (added after a stuck-at campaign on the synthesised adapter, D-038: pat() gives each bit one value per test, which
+    // (added after a stuck-at campaign on the synthesised adapter, D-039: pat() gives each bit one value per test, which
     // cannot show a fault inside the 256 two-way multiplexers)
     for (int u = 0; u < 2; u++) begin
       l3_resp_line = u ? {{L2_W{1'b1}}, {L2_W{1'b0}}} : {{L2_W{1'b0}}, {L2_W{1'b1}}};
@@ -103,6 +103,18 @@ module tb_adapter;
       check(l3_req_we === 1'b1 && l3_req_addr === addrs[i] && l3_req_wdata === pat(8'h40 + i[7:0]) &&
             l3_req_wstrb === {L2_LINE_B{1'b1}},
             $sformatf("write-back to 0x%08h: data, address, WE and all-ones strobes pass through", addrs[i]));
+    end
+
+    // ---- every bit of the write-back data can be 1 and can be 0 ----
+    // (added after the independent review of Phase 7, D-040: pat() above gives bit 6 of every byte only the value 1 here, and
+    // the write-back data is wiring, so no cell-level test can see a masked or forced bit)
+    for (int u = 0; u < 2; u++) begin
+      l2_req_valid = 1'b1; l2_req_we = 1'b1;
+      l2_req_addr  = 32'h0000_0000;
+      l2_req_line  = u ? {L2_W{1'b1}} : {L2_W{1'b0}};
+      #1;
+      check(l3_req_wdata === (u ? {L2_W{1'b1}} : {L2_W{1'b0}}),
+            $sformatf("write-back data with every bit %0d reaches L3 unchanged", u));
     end
 
     // ---- a read request is not turned into a write ----

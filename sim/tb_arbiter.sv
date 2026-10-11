@@ -279,7 +279,7 @@ module tb_arbiter;
     check(acc_addr[0] == ia(0, 5) && acc_addr[1] == da(0, 5), "late resp_ready: the other side was served after, not instead");
 
     // ---- the same with the sides swapped: requester 1 owns the miss and takes its response late ----
-    // (added after a stuck-at campaign on the synthesised arbiter, D-038: only requester 0 had a late-resp_ready scenario)
+    // (added after a stuck-at campaign on the synthesised arbiter, D-039: only requester 0 had a late-resp_ready scenario)
     reset_all();
     clear_log();
     fork
@@ -333,7 +333,7 @@ module tb_arbiter;
     idle(2);
 
     // ---- every bit of the address, write data and strobes can be 1 and can be 0 on the way through, from either side ----
-    // (added after a stuck-at campaign on the synthesised arbiter, D-038: the muxes are bit-wide and the scenarios above only
+    // (added after a stuck-at campaign on the synthesised arbiter, D-039: the muxes are bit-wide and the scenarios above only
     // ever show them a few patterns, so a bit stuck at 0 in most of them went unseen)
     reset_all();
     clear_log();
