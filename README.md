@@ -308,3 +308,8 @@ D-013 in `docs/engineering_log.md` has the full reasoning, including the direct 
 - **Place and route, and the UVM tier:** nothing yet. The command that will produce each of those numbers is specified in the phase
   table in `docs/00_project_plan.md`, so each claim can be checked as soon as it exists, following this project's `NOT YET MEASURED`
   policy.
+
+## License
+
+MIT, see [`LICENSE`](LICENSE). The Sky130 liberty file in `sky130hd/` isn't mine and keeps its own license (Apache 2.0, from the
+SkyWater PDK); [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and [`sky130hd/README.md`](sky130hd/README.md) have the details.
