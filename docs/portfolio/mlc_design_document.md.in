@@ -438,5 +438,5 @@ metric to go with the data-integrity checks.
   and timing flows, structural checks, `mutate_top.py`, `doc_snippets.py`), `constraints/`, `sky130hd/`, `build/reports/`, `results/`,
   `docs/`.
 - To reproduce, use the commands in G.6, and for synthesis and timing (tens of minutes to hours; the largest point needs 9.4 GiB) `make
-  synth`, `make synth-timing` and `make sta`. There's no source-repository link for this portfolio copy because it hasn't been published,
-  and the original repository is private.
+  synth`, `make synth-timing` and `make sta`. The source, with the history of the private repository I built it in,
+  is at https://github.com/AbhijeetJ-512/mlc-cache-controller.
