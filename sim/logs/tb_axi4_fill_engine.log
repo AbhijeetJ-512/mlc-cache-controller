@@ -45,8 +45,13 @@ PASS: all 16 W beats were taken while AW was still held off, and the engine keep
 PASS: the write whose W burst came first reached memory at the right address
 PASS: no protocol violation with either write-channel ordering
 PASS: a write with W stalled behind an AW-waits-for-WVALID slave completes
+PASS: back-to-back: the first line is correct
+PASS: back-to-back: the second line, accepted the cycle after the first response, is correct
+PASS: back-to-back reads leave the protocol monitor clean
+PASS: a read whose first beat arrives 4 cycles after the address handshake returns the right line
+PASS: and the protocol monitor stays clean
 PASS: reset mid-read returns the engine to idle
 PASS: the engine works normally after a reset mid-burst
 PASS: no protocol violation anywhere in the run
 ** ALL TESTS PASSED **
-sim/tb_axi4_fill_engine.sv:305: $finish called at 6265000 (1ps)
+sim/tb_axi4_fill_engine.sv:332: $finish called at 7495000 (1ps)

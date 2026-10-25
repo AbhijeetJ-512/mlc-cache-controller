@@ -39,9 +39,12 @@ PASS: a requester that drops its read request once accepted still gets its respo
 PASS: and the arbiter is free for the next request
 PASS: after a reset in the middle of a read requester 1 is served normally
 PASS: and so is requester 0, with a miss
+PASS: with an L2 that always says ready, the read is still answered with its own line
+PASS: and the write, offered while that read was outstanding, reached L2 afterwards instead of being reported accepted and lost
 PASS: a response was never given to both requesters
 PASS: a response was never given to a requester that was not waiting, or dropped
 PASS: both requesters were never told their request was accepted in the same cycle
 PASS: L2 was never shown a request while one of its reads was outstanding
+PASS: no requester was ever told its request was accepted while a read of L2 was outstanding
 ** ALL TESTS PASSED **
-sim/tb_arbiter.sv:464: $finish called at 3695000 (1ps)
+sim/tb_arbiter.sv:486: $finish called at 3825000 (1ps)

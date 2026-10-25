@@ -284,6 +284,33 @@ module tb_axi4_fill_engine;
     axi.aw_mode = 0; axi.b_delay = 0;
     check(mem_matches(32'h0000_6380, test_line(8'h71)), "a write with W stalled behind an AW-waits-for-WVALID slave completes");
 
+    // ---- back-to-back requests (added with the bound checkers: c_back_to_back showed no test ever did this) ----
+    // The second request is already waiting with req_valid held when the first response is taken, so the engine accepts it in the very next
+    // cycle. A master that sees req_ready only after a bubble would never exercise the idle-to-busy edge straight after S_RESP.
+    resp_ready <= 1'b1;
+    @(posedge clk);
+    req_valid <= 1'b1; req_we <= 1'b0; req_addr <= 32'h0000_7000; req_line <= '0;
+    @(posedge clk); #1;
+    req_addr <= 32'h0000_7040;
+    wait (resp_valid);
+    check(resp_line === image_line(32'h0000_7000), "back-to-back: the first line is correct");
+    @(posedge clk); #1;
+    @(posedge clk);
+    req_valid <= 1'b0; req_addr <= 32'hFFFF_FFFF; req_line <= 'x; req_we <= 1'bx;
+    wait (resp_valid);
+    check(resp_line === image_line(32'h0000_7040), "back-to-back: the second line, accepted the cycle after the first response, is correct");
+    @(posedge clk);
+    wait (req_ready);
+    check(axi.ar_count >= 2 && axi.proto_errors == 0, "back-to-back reads leave the protocol monitor clean");
+
+    // ---- a slave that takes its time before the FIRST read beat ----
+    // The engine must keep the read channel open until RVALID arrives, however late (AXI allows RVALID any number of cycles after the AR handshake).
+    axi.first_gap_en = 1'b1; r_gap <= 4'd4;
+    do_read(32'h0000_8000, got);
+    axi.first_gap_en = 1'b0; r_gap <= 4'd0;
+    check(got === image_line(32'h0000_8000), "a read whose first beat arrives 4 cycles after the address handshake returns the right line");
+    check(axi.proto_errors == 0, "and the protocol monitor stays clean");
+
     // ---- reset in the middle of a burst ----
     r_gap <= 4'd2;
     issue(32'h0000_5000, 1'b0, '0);

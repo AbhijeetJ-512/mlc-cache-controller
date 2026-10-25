@@ -24,6 +24,7 @@
 #   make sta-selftest  STA known answers (feed-through, inverter delay, the SDC's constants, each class of path) and cases it must refuse
 #   make sta-selftest-deep  break the timing flow about sixty ways, one per copy; the self-test must notice each
 #   make sva           the testbenches under Verilator 5.052 with the bound SVA checkers (verif/); 53 s from a cold start with 7 jobs (needs VERILATOR_5052, default ../../_toolchain/verilator-5.052)
+#   make sva-mutants  the injected-bug campaign for those checkers (scripts/sva_mutants.py); 1126 s measured with --jobs 7 on 8 cores (the target uses the default of 4 jobs)
 #   make synth-summary rebuild build/reports/summary.md from the reports
 #   make clean         remove build products (the tracked logs in sim/logs/ and build/reports/ are kept)
 #
@@ -284,9 +285,12 @@ synth-selftest:
 synth-selftest-deep:
 	@$(SYNTH) --selftest-deletions
 
-.PHONY: sva
+.PHONY: sva sva-mutants
 sva:
 	@$(PYTHON) scripts/sva_run.py
+
+sva-mutants:
+	@$(PYTHON) scripts/sva_mutants.py
 
 synth-summary:
 	@$(PYTHON) scripts/synth_summary.py

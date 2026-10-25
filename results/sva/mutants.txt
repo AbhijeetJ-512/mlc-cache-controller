@@ -1,0 +1,115 @@
+mutants: 106, caught 106 (by tests 96, by an assertion only 10), survived 0, invalid 0
+caught ONLY by an assertion (the testbenches missed them): N04, N13, N31, P02, P07, P09, P22, P41, P42, P43
+survivors (each with its reason): none
+assertions defined: 106; fired in at least one mutant run: 105
+assertions that fired in no run: none
+assertions no RTL edit can violate (reason in verif/sva_unviolable.txt): a_victim_range
+mutants whose expected assertion did not fire (another one did): none
+PROBLEMS: none
+
+M01  KILLED by tests              L1: a store hit does not update the L1 data array                                               assert-fired: -
+M02  KILLED by tests              L1: the write-through forward of a store hit ignores the byte strobes                           assert-fired: -
+M03  KILLED by tests              L1: a store miss is not forwarded to L2                                                         assert-fired: -
+M04  KILLED by tests              L1: a store miss does not merge the store into the filled line                                  assert-fired: -
+M05  KILLED by tests              L1: a hit returns the neighbouring word                                                         assert-fired: -
+M06  KILLED by tests              L2/L3: a store hit does not set the dirty bit                                                   assert-fired: -
+M07  KILLED by tests              L2/L3: a write-allocated line is not marked dirty                                               assert-fired: -
+M08  KILLED by tests              L2/L3: a write-back goes to the address of the incoming line                                    assert-fired: a_wb_address
+M09  KILLED by tests              L2/L3: a write-back sends way 0's data instead of the victim's                                  assert-fired: -
+M10  KILLED by tests              L2/L3: the byte-strobe merge ignores the strobes                                                assert-fired: -
+M11  KILLED by tests              L2/L3: a write-allocate miss drops the store                                                    assert-fired: -
+M12  KILLED by tests              L2/L3: a store hit is not written                                                               assert-fired: -
+M13  KILLED by tests              L2/L3: the eviction does not wait for the write-back to be accepted                             assert-fired: a_evict_waits,a_wb_holds
+M14  KILLED by tests              L2/L3: a filled line is never marked valid                                                      assert-fired: -
+M15  KILLED by tests              L2/L3: the PLRU tree is ignored, a full set always evicts way 0                                 assert-fired: -
+M16  KILLED by tests              adapter: the half-line select is inverted                                                       assert-fired: a_half_select
+M17  KILLED by tests              adapter: write-backs to L3 carry no strobes                                                     assert-fired: a_write_strobes
+M18  KILLED by tests              arbiter: a miss response goes to the other requester                                            assert-fired: a_resp_owner,a_resp_ready_own
+M19  KILLED by tests              arbiter: round-robin removed, L1-I wins every tie                                               assert-fired: a_tie_rule
+M20  KILLED by tests              AXI engine: write beats carry no strobes                                                        assert-fired: a_wstrb_full
+M21  KILLED by tests              AXI engine: write bursts go to the neighbouring line                                            assert-fired: -
+M22  KILLED by tests              AXI engine: read bursts are one beat short                                                      assert-fired: a_ar_params
+M23  KILLED by tests              AXI engine: WLAST on the second-to-last beat                                                    assert-fired: a_w_beat_count,a_wlast_def
+N01  KILLED by tests              L1: a hit raises resp_valid in a cycle in which it was not accepted (phantom response)          assert-fired: a_no_phantom,sb_accept_when_free,sb_response_has_request
+N02  KILLED by tests              L1: a hit is accepted although the CPU cannot take the response                                 assert-fired: a_hit_needs_ready,sb_accept_when_free
+N03  KILLED by tests              L1: a request is accepted while a forwarded store is still pending in the skid register         assert-fired: a_fill_addr_stable,a_fill_request,a_skid_blocks,a_wt_forward
+N04  KILLED by an assertion only  L1: the downstream response channel is always open                                              assert-fired: a_resp_ready_def
+N05  KILLED by tests              L1: the miss response is dropped without waiting for resp_ready                                 assert-fired: a_update_holds,sb_accept_when_free
+N06  KILLED by tests              L1: the pending forwarded store is dropped whether or not L2 accepted it                        assert-fired: a_skid_holds
+N07  KILLED by tests              L1: the fill request is issued as a write                                                       assert-fired: a_fill_request
+N08  KILLED by tests              L2/L3: a write-allocate miss is answered (writes are posted, D-021)                             assert-fired: a_write_alloc_no_resp
+N09  KILLED by tests              L2/L3: a read hit is accepted although the requester cannot take the response                   assert-fired: a_read_hit_ready
+N10  KILLED by tests              L2/L3: a victim's dirty bit is trusted without checking that the line is valid                  assert-fired: a_check_clean,a_wb_other_line,a_wb_request
+N11  KILLED by tests              L2/L3: the fill address is not line-aligned (D-025)                                             assert-fired: a_ar_4k,a_ar_aligned,a_l2_fill_request
+N12  KILLED by tests              L2/L3: the replacement tree is not updated by a fill                                            assert-fired: a_plru_event
+N13  KILLED by an assertion only  L2/L3: the downstream response channel is always open                                           assert-fired: a_l2_resp_ready_def
+N14  KILLED by tests              L2/L3: a read-miss response is dropped without waiting for resp_ready                           assert-fired: a_update_wait
+N15  KILLED by tests              arbiter: a request is shown to L2 while a read that missed is still outstanding                 assert-fired: a_blocked_busy,a_write_not_kept
+N16  KILLED by tests              arbiter: the round-robin state follows the selection even when nothing was accepted             assert-fired: a_last_keep
+N17  KILLED by tests              arbiter: requester 0 is told ready even when requester 1 is the one shown to L2                 assert-fired: a_one_ready,a_unselected_wait
+N18  KILLED by tests              arbiter: after reset a tie goes to the data side                                                assert-fired: a_reset_state
+N19  KILLED by tests              arbiter: the outstanding read is forgotten when the response is offered, not when it is taken   assert-fired: a_busy_hold
+N20  KILLED by tests              PLRU: the tree is updated towards the way that was just used                                    assert-fired: a_not_just_used
+N21  KILLED by tests              PLRU: an access never changes the tree                                                          assert-fired: a_not_just_used
+N22  KILLED by tests              adapter: L2 is told its request was accepted whatever L3 says                                   assert-fired: a_ready_through
+N23  KILLED by tests              adapter: L3's response is taken whether or not L2 can accept it                                 assert-fired: a_resp_through
+N24  KILLED by tests              AXI engine: the AR channel is abandoned without ARREADY                                         assert-fired: a_ar_hold
+N25  KILLED by tests              AXI engine: the AW channel is considered done without AWREADY                                   assert-fired: a_aw_hold
+N26  KILLED by tests              AXI engine: write bursts are one beat short                                                     assert-fired: a_aw_params
+N27  KILLED by tests              AXI engine: an RLAST in the wrong place is not flagged                                          assert-fired: a_err_rlast
+N28  KILLED by tests              AXI engine: write beats go out in reverse order                                                 assert-fired: sb_write_beat_order
+N29  KILLED by tests              AXI engine: a SLVERR write response is not flagged                                              assert-fired: a_err_bresp
+N30  KILLED by tests              AXI engine: BREADY is always high                                                               assert-fired: a_bready_def,a_one_txn
+N31  KILLED by an assertion only  AXI engine: RREADY is always high                                                               assert-fired: a_one_txn,a_rready_def
+P01  KILLED by tests              L1: a store hit is accepted but not answered                                                    assert-fired: a_hit_same_cycle,sb_accept_when_free
+P02  KILLED by an assertion only  L1: a request is accepted while the miss response is being delivered                            assert-fired: a_miss_blocks
+P03  KILLED by tests              L1: a store miss does not start a fill                                                          assert-fired: a_miss_starts
+P04  KILLED by tests              L1: the fill state is left when L2 accepts the request, not when it answers                     assert-fired: a_fill_addr_stable,a_fill_waits
+P05  KILLED by tests              L1: a store miss skips the response state after the fill                                        assert-fired: a_fill_done
+P06  KILLED by tests              L1: a store miss is not answered in the response state                                          assert-fired: a_update_resp
+P07  KILLED by an assertion only  L1: the response state is held until a pending forwarded store has gone                         assert-fired: a_update_exits,sb_accept_when_free,sb_response_has_request
+P08  KILLED by tests              L1: a pending forwarded store is not shown to L2 in the response state                          assert-fired: a_skid_holds,a_skid_request
+P09  KILLED by an assertion only  L1: a read miss sends its fill request from the idle state                                      assert-fired: a_quiet_idle
+P10  KILLED by tests              L1: reset leaves the FSM in the response state                                                  assert-fired: a_reset_idle,sb_accept_when_free,sb_response_has_request
+P11  KILLED by tests              L2/L3: a hit in way 0 is also reported as a hit in way 1                                        assert-fired: a_one_hit
+P12  KILLED by tests              L2/L3: a write hit is answered (writes are posted, D-021)                                       assert-fired: a_resp_only_reads,a_write_posted
+P13  KILLED by tests              L2/L3: a read hit is accepted but not answered                                                  assert-fired: a_read_hit_resp
+P14  KILLED by tests              L2/L3: a request is accepted while the miss response is being delivered                         assert-fired: a_l2_miss_blocks
+P15  KILLED by tests              L2/L3: a miss skips the tag check (no victim is chosen)                                         assert-fired: a_l2_miss_starts
+P16  KILLED by tests              L2/L3: a dirty victim is overwritten without a write-back                                       assert-fired: a_check_dirty
+P17  KILLED by tests              L2/L3: after the write-back is accepted the FSM goes back to the tag check                      assert-fired: a_evict_done
+P18  KILLED by tests              L2/L3: the fill state is left without waiting for the response                                  assert-fired: a_fill_addr_hold,a_l2_fill_waits
+P19  KILLED by tests              L2/L3: a write-allocate fill skips the update state                                             assert-fired: a_l2_fill_done
+P20  KILLED by tests              L2/L3: a posted write waits for resp_ready before leaving the update state                      assert-fired: a_update_exit
+P21  KILLED by tests              L2/L3: a read miss on a line with an odd tag is never answered                                  assert-fired: a_l2_update_resp
+P22  KILLED by an assertion only  L2/L3: the fill address changes in the cycle the response arrives                               assert-fired: a_fill_addr_hold,a_l2_fill_request
+P23  KILLED by tests              L2/L3: a downstream request is raised during the tag check                                      assert-fired: a_quiet_other
+P24  KILLED by tests              L2/L3: reset leaves the FSM in the tag check                                                    assert-fired: a_l2_reset_idle
+P25  KILLED by tests              arbiter: L2 is shown a request whenever no read is outstanding, with or without a requester     assert-fired: a_valid_source
+P26  KILLED by tests              arbiter: L2 always sees requester 1's address                                                   assert-fired: a_payload_0
+P27  KILLED by tests              arbiter: L2 always sees requester 0's address                                                   assert-fired: a_payload_1
+P28  KILLED by tests              arbiter: requester 1 is told ready while a read is outstanding                                  assert-fired: a_ready_matches
+P29  KILLED by tests              arbiter: the owner of an outstanding read is recorded as the previous requester                 assert-fired: a_busy_set
+P30  KILLED by tests              arbiter: a response to requester 1 does not release the arbiter                                 assert-fired: a_busy_clear
+P31  KILLED by tests              arbiter: an accepted write is treated as an outstanding read                                    assert-fired: a_write_not_kept
+P32  KILLED by tests              arbiter: a read hit is treated as an outstanding read                                           assert-fired: a_hit_not_kept
+P33  KILLED by tests              arbiter: requester 0 is shown every response                                                    assert-fired: a_resp_one
+P34  KILLED by tests              arbiter: requester 1 is shown a response whenever it is the target                              assert-fired: a_resp_none
+P35  KILLED by tests              arbiter: a read hit is answered to the previously accepted requester                            assert-fired: a_resp_accepted
+P36  KILLED by tests              arbiter: the round-robin state records the requester that was not accepted                      assert-fired: a_last_def
+P37  KILLED by tests              PLRU: reset sets the tree towards the last way                                                  assert-fired: a_reset_victim
+P38  KILLED by tests              AXI engine: the write beat counter advances without WREADY                                      assert-fired: a_w_beat_count,a_w_hold,sb_write_beat_order
+P39  KILLED by tests              AXI engine: the write address is not line-aligned                                               assert-fired: a_aw_4k,a_aw_aligned
+P40  KILLED by tests              AXI engine: write bursts are addressed at the end of the 4 KiB window                           assert-fired: a_aw_4k,a_aw_aligned
+P41  KILLED by an assertion only  AXI engine: a request is accepted while the previous response is still offered                  assert-fired: a_read_request,a_ready_def
+P42  KILLED by an assertion only  AXI engine: RREADY waits for RVALID (legal AXI, but not the engine's own rule)                  assert-fired: a_r_follows_ar,a_rready_def
+P43  KILLED by an assertion only  AXI engine: ARVALID is raised one cycle after the request is accepted                           assert-fired: a_read_request
+P44  KILLED by tests              AXI engine: write data waits for the AW handshake (the deadlock D-032 designed out)             assert-fired: a_write_request
+P45  KILLED by tests              AXI engine: the read response is raised one beat early                                          assert-fired: a_resp_after_last
+P46  KILLED by tests              AXI engine: the read response is dropped without waiting for resp_ready                         assert-fired: a_resp_hold
+P47  KILLED by tests              AXI engine: a write ends in the read-response state                                             assert-fired: a_line_assembled,a_resp_after_last,a_write_ends_b
+P48  KILLED by tests              AXI engine: a SLVERR read response is not flagged                                               assert-fired: a_err_resp
+P49  KILLED by tests              AXI engine: the error flag is cleared by the next request                                       assert-fired: a_err_sticky
+P50  KILLED by tests              AXI engine: the read beats are assembled in reverse order                                       assert-fired: a_line_assembled
+P51  KILLED by tests              adapter: write-backs are sent to L3 as reads                                                    assert-fired: a_req_through
+P52  KILLED by tests              adapter: bit 0 of a write-back line is cleared                                                  assert-fired: a_write_payload

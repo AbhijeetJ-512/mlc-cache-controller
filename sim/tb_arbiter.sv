@@ -57,7 +57,11 @@ module tb_arbiter;
   logic [31:0] saved_addr;
   wire         is_hit = l2_req_addr[12];
 
-  assign l2_req_ready  = (m == M_IDLE) && (!l2_req_valid || !is_hit || l2_req_we || l2_resp_ready);
+  // l2_sloppy: an L2 that claims to be ready for the whole time a read of its own is outstanding. The real L2 never does (it leaves its idle
+  // state in the cycle the read is accepted), so the arbiter's own refusal to pass that ready on is not exercised by the normal model.
+  logic l2_sloppy = 1'b0;
+  assign l2_req_ready  = (l2_sloppy && (m == M_MISS || m == M_RESP)) ? 1'b1 :
+                         (m == M_IDLE) && (!l2_req_valid || !is_hit || l2_req_we || l2_resp_ready);
   assign l2_resp_valid = (m == M_RESP) || (m == M_IDLE && l2_req_valid && l2_req_ready && is_hit && !l2_req_we);
   assign l2_resp_line  = (m == M_RESP) ? line_of(saved_addr) : line_of(l2_req_addr);
 
@@ -93,7 +97,7 @@ module tb_arbiter;
   endtask
 
   // ---- monitors, sampled mid-cycle so they never race the drivers ----
-  int resp_both = 0, resp_stray = 0, ready_both = 0, shown_while_outstanding = 0;
+  int resp_both = 0, resp_stray = 0, ready_both = 0, shown_while_outstanding = 0, ready_while_outstanding = 0;
   always @(negedge clk) if (rst_n) begin
     if (r_valid[0] && r_valid[1]) resp_both++;
     if (r_valid[0] && !waiting[0]) resp_stray++;
@@ -103,6 +107,8 @@ module tb_arbiter;
     if (r_ready[0] && r_ready[1]) ready_both++;
     // L2 must not be shown a request while one of its reads is outstanding (04_interfaces.md section 2)
     if ((m == M_MISS || m == M_RESP) && l2_req_valid) shown_while_outstanding++;
+    // and no requester may be told its request was taken in that time: L2 never saw it
+    if ((m == M_MISS || m == M_RESP) && (r_ready[0] || r_ready[1])) ready_while_outstanding++;
   end
 
   // ---- requester drivers (they assume the caller is just after a clock edge) ----
@@ -453,11 +459,27 @@ module tb_arbiter;
     read_now(0, ia(0, 31), l0);
     check(l0 === line_of(ia(0, 31)), "and so is requester 0, with a miss");
 
+    // ---- the arbiter's own gate: a request is not taken while a read is outstanding, whatever L2 says ----
+    // Requester 0 reads (a miss) and holds its request; requester 1 offers a write at once and wins the next tie. L2 claims to be ready throughout.
+    reset_all();
+    clear_log();
+    l2_sloppy = 1'b1;
+    fork
+      read_now(0, ia(0, 80), l0);
+      begin @(posedge clk); write_now(1, da(0, 80), 32'hC0DE_0080, 4'hF); end
+    join
+    l2_sloppy = 1'b0;
+    idle(2);
+    check(l0 === line_of(ia(0, 80)), "with an L2 that always says ready, the read is still answered with its own line");
+    check(acc_addr.size() == 2 && !acc_we[0] && acc_we[1] && acc_addr[1] == da(0, 80) && acc_data[1] == 32'hC0DE_0080,
+          "and the write, offered while that read was outstanding, reached L2 afterwards instead of being reported accepted and lost");
+
     // ---- things that must never happen anywhere in the run ----
     check(resp_both == 0, "a response was never given to both requesters");
     check(resp_stray == 0, "a response was never given to a requester that was not waiting, or dropped");
     check(ready_both == 0, "both requesters were never told their request was accepted in the same cycle");
     check(shown_while_outstanding == 0, "L2 was never shown a request while one of its reads was outstanding");
+    check(ready_while_outstanding == 0, "no requester was ever told its request was accepted while a read of L2 was outstanding");
 
     if (errors == 0) begin
       $display("** ALL TESTS PASSED **");

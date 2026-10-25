@@ -1,0 +1,16 @@
+# one line per testbench: its own verdict, then any checker assertion that fired
+
+tb_l1_dcache           ok     PASS lines 91, FAIL lines 0, exit 0   checkers fired: none
+tb_l1_icache           ok     PASS lines 4, FAIL lines 0, exit 0   checkers fired: none
+tb_plru                ok     PASS lines 23, FAIL lines 0, exit 0   checkers fired: none
+tb_plru_ways           ok     PASS lines 98, FAIL lines 0, exit 0   checkers fired: none
+tb_l2                  ok     PASS lines 120, FAIL lines 0, exit 0   checkers fired: none
+tb_adapter             ok     PASS lines 41, FAIL lines 0, exit 0   checkers fired: none
+tb_axi4_fill_engine    ok     PASS lines 55, FAIL lines 0, exit 0   checkers fired: none
+tb_arbiter             ok     PASS lines 48, FAIL lines 0, exit 0   checkers fired: none
+tb_l1_l2               ok     PASS lines 11, FAIL lines 0, exit 0   checkers fired: none
+tb_l1_pair_l2          ok     PASS lines 41, FAIL lines 0, exit 0   checkers fired: none
+tb_l2_l3_chain         ok     PASS lines 19, FAIL lines 0, exit 0   checkers fired: none
+tb_mlc_top             ok     PASS lines 5, FAIL lines 0, exit 0   checkers fired: none
+tb_l3                  not run: Verilator 5.052 internal fault while building it
+tb_reset_sync          not run: contains no module a checker is bound to

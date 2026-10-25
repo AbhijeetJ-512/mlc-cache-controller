@@ -1,0 +1,8 @@
+mutants: 106, caught 106 (by tests 96, by an assertion only 10), survived 0, invalid 0
+caught ONLY by an assertion (the testbenches missed them): N04, N13, N31, P02, P07, P09, P22, P41, P42, P43
+survivors (each with its reason): none
+assertions defined: 106; fired in at least one mutant run: 105
+assertions that fired in no run: none
+assertions no RTL edit can violate (reason in verif/sva_unviolable.txt): a_victim_range
+mutants whose expected assertion did not fire (another one did): none
+PROBLEMS: none

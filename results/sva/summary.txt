@@ -1,0 +1,7 @@
+mlc_cache_controller: bound checkers under Verilator 5.052 on the repository's own testbenches (12 runs, unmodified RTL)
+runs                      : 12 testbenches, all passed and no checker fired: yes
+assertions defined        : 106 labelled (103 concurrent, 3 procedural checks)
+conditional assertions    : 85, antecedent reached in at least one run: 85
+cover bins                : 59, hit: 59, zero: 0 (excluded with a reason: 0)
+note                      : gen_vacuity: 85 conditional assertions got an antecedent cover; 12 unconditional (never vacuous): a_resp_ready_def, a_one_hit, a_l2_resp_ready_def, a_plru_event, a_one_ready, a_unselected_wait, a_victim_range, a_wlast_def, a_one_txn, a_ready_def, a_rready_def, a_bready_def
+problems                  : none

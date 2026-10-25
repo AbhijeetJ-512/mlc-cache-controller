@@ -1,0 +1,4 @@
+# Assertions that no edit of the RTL can make fire, each with the reason. The mutation campaign lists them apart from the ones it
+# demonstrated, and fails if one of them does fire (a stale entry) or if an assertion that never fired is not listed here.
+# format: <label> <reason>
+a_victim_range  the PLRU victim index is a $clog2(WAYS)-bit value and WAYS must be a power of two (mlc_pkg parameter guard), so it is below WAYS by construction; the assertion is a guard for the day the parameter rule is relaxed

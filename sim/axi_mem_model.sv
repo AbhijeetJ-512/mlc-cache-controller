@@ -98,6 +98,7 @@ module axi_mem_model #(
   logic [31:0] r_addr_q;
   logic [7:0]  r_len_q, r_beat;
   logic [3:0]  r_gap_cnt;
+  logic        first_gap_en = 1'b0;   // set by a testbench (axi.first_gap_en): r_gap then also delays the FIRST beat of a burst
   wire         r_burst_end = (rlast_mode == 2) ? (r_beat == 8'd3) : (r_beat == r_len_q);
 
   assign arready = (rstate == R_IDLE) && !stall_ar;
@@ -115,7 +116,7 @@ module axi_mem_model #(
           r_addr_q  <= araddr;
           r_len_q   <= arlen;
           r_beat    <= '0;
-          r_gap_cnt <= '0;
+          r_gap_cnt <= first_gap_en ? r_gap : '0;
           rstate    <= R_DATA;
         end
         R_DATA: begin
