@@ -13,8 +13,8 @@ sim/elab_*
 a.out
 *.vvp
 
-# Local tooling state: Claude Code worktrees, per-user settings, and subagent scratch workspaces.
-# Only these paths are ignored, so any project-level .claude/ config added later stays trackable.
+# Local tool state: worktrees, per-user settings and scratch workspaces. Only these paths are ignored,
+# so a project-level config folder added later stays trackable.
 .claude/worktrees/
 .claude/settings.local.json
 .superpowers/
