@@ -24,3 +24,7 @@ build/work/
 build/netlists/
 __pycache__/
 build/lib/
+
+# Simulator builds of the checker runs, the mutation campaigns and the system test; build/reports/ stays tracked
+build/*
+!build/reports/
