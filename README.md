@@ -109,8 +109,8 @@ mlc_cache_controller/
 ├── constraints/    mlc.sdc: the clock and boundary constraints of one unit analysed on its own
 ├── sky130hd/       the Sky130HD typical-corner liberty the flow reads (origin and SHA-256 in its README)
 ├── build/reports/  checked-in evidence: one directory per synthesis point (and its timing), summary.md, timing_summary.md
-├── docs/           requirements, architecture, microarchitecture, interfaces, engineering log,
-│                   and per-phase implementation plans (docs/superpowers/plans/)
+├── docs/           requirements, architecture, microarchitecture, interfaces and the engineering log
+│                   (where the log says "the plan" for a phase, it means that phase's working plan, which is no longer in the tree)
 ├── Makefile        check, sim, test-<name>, elab, top, lint, list, clean, and the synth-* targets
 ├── verif/          the bound SVA checkers and their binds (portfolio addition, revision 3)
 ├── results/        system test, injected-bug campaigns and SVA results (portfolio additions)
