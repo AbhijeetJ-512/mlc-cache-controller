@@ -68,6 +68,7 @@ $(call register,tb_arbiter,$(PKG) sim/tb_arbiter.sv rtl/arbiter/l1_l2_arbiter.sv
 $(call register,tb_l1_l2,$(PKG) sim/tb_l1_l2.sv sim/l3_stub.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_dcache_ctrl.sv rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv)
 $(call register,tb_l1_pair_l2,$(PKG) sim/tb_l1_pair_l2.sv sim/l3_stub.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_icache_ctrl.sv rtl/l1/l1_dcache_ctrl.sv rtl/arbiter/l1_l2_arbiter.sv rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv)
 $(call register,tb_l2_l3_chain,$(PKG) sim/tb_l2_l3_chain.sv sim/axi_mem_model.sv rtl/mem_if/axi4_fill_engine.sv rtl/adapter/l2_l3_width_adapter.sv rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv rtl/l3/l3_cache_ctrl.sv)
+$(call register,tb_mlc_top,$(PKG) sim/tb_mlc_top.sv sim/axi_mem_model.sv rtl/common/reset_sync.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_icache_ctrl.sv rtl/l1/l1_dcache_ctrl.sv rtl/arbiter/l1_l2_arbiter.sv rtl/replace/plru_tree.sv rtl/l2/l2_cache_ctrl.sv rtl/l3/l3_cache_ctrl.sv rtl/adapter/l2_l3_width_adapter.sv rtl/mem_if/axi4_fill_engine.sv rtl/top/mlc_cache_top.sv)
 
 # Everything mlc_cache_top instantiates, package first (D-016); used by `make top`.
 TOP_SRC := $(PKG) rtl/common/reset_sync.sv rtl/l1/l1_cache_ctrl.sv rtl/l1/l1_icache_ctrl.sv rtl/l1/l1_dcache_ctrl.sv \

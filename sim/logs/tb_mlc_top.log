@@ -1,0 +1,9 @@
+PASS: 11051 D loads, all equal to the flat reference memory (0 mismatches)
+PASS: 4000 instruction fetches (L1-I), all equal to the reference (0 mismatches)
+INFO: 6105 D stores issued
+INFO: AXI traffic: 7044 read bursts (112704 beats), 1139 write bursts (18224 beats)
+PASS: the AXI4 memory model saw no protocol error from the master
+PASS: mem_err stayed low
+PASS: dirty lines were evicted all the way to memory (1139 write bursts)
+tb_mlc_top: ALL CHECKS PASSED
+sim/tb_mlc_top.sv:283: $finish called at 2778945000 (1ps)
