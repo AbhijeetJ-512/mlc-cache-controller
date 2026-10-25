@@ -1,0 +1,27 @@
+mutants run: 23, killed 20, survived 3, invalid 0 (each through the full system test sim/tb_mlc_top.sv)
+a survivor is expected where the edit changes only replacement quality or fairness: the test checks data integrity, not performance.
+PROBLEMS: none (every outcome matched its expectation)
+
+M01  KILLED    L1: a store hit does not update the L1 data array                      [expected: killed] FAIL: load 0x0000020c returned 0xc0de0083, reference 0xc0350083
+M02  KILLED    L1: the write-through forward of a store hit ignores the byte strobes  [expected: killed] FAIL: load 0x00000378 returned 0x4aa01822, reference 0xc0de0022
+M03  KILLED    L1: a store miss is not forwarded to L2                                [expected: killed] FAIL: load 0x00000040 returned 0xc0de0010, reference 0xa5a50000
+M04  KILLED    L1: a store miss does not merge the store into the filled line         [expected: killed] FAIL: load 0x00000670 returned 0xc0de019c, reference 0x7467c86f
+M05  KILLED    L1: a hit returns the neighbouring word                                [expected: killed] FAIL: fetch 0x00071824 returned 0xc0dfc608, expected 0xc0dfc609
+M06  KILLED    L2/L3: a store hit does not set the dirty bit                          [expected: killed] FAIL: load 0x00000040 returned 0xc0de0010, reference 0xa5a50000
+M07  KILLED    L2/L3: a write-allocated line is not marked dirty                      [expected: killed] FAIL: load 0x00028040 returned 0xa5a52005, reference 0xa5a52105
+M08  KILLED    L2/L3: a write-back goes to the address of the incoming line           [expected: killed] FAIL: load 0x00000040 returned 0xa5a50006, reference 0xa5a50000
+M09  KILLED    L2/L3: a write-back sends way 0's data instead of the victim's         [expected: killed] FAIL: load 0x00001040 returned 0xa5a50003, reference 0xa5a50001
+M10  KILLED    L2/L3: the byte-strobe merge ignores the strobes                       [expected: killed] FAIL: load 0x00000378 returned 0x4aa01822, reference 0xc0de0022
+M11  KILLED    L2/L3: a write-allocate miss drops the store                           [expected: killed] FAIL: load 0x00028040 returned 0xa5a52005, reference 0xa5a52105
+M12  KILLED    L2/L3: a store hit is not written                                      [expected: killed] FAIL: load 0x00000040 returned 0xc0de0010, reference 0xa5a50000
+M13  SURVIVED  L2/L3: the eviction does not wait for the write-back to be accepted    [expected: survives: equivalent in this integration (the downstream is always ready when L2 evicts: one requester, blocking misses); tb_l2 with a stalling stub kills it] 
+M14  KILLED    L2/L3: a filled line is never marked valid                             [expected: killed] FAIL: load 0x00000040 returned 0xc0de0010, reference 0xa5a50000
+M15  SURVIVED  L2/L3: the PLRU tree is ignored, a full set always evicts way 0        [expected: survives: replacement quality is not data-visible] 
+M16  KILLED    adapter: the half-line select is inverted                              [expected: killed] FAIL: load 0x00000000 returned 0xc0de0008, reference 0xc0de0000
+M17  KILLED    adapter: write-backs to L3 carry no strobes                            [expected: killed] FAIL: load 0x00000040 returned 0xc0de0010, reference 0xa5a50000
+M18  KILLED    arbiter: a miss response goes to the other requester                   [expected: killed] FAIL: fetch 0x00071820 returned 0xc0de0000, expected 0xc0dfc608
+M19  SURVIVED  arbiter: round-robin removed, L1-I wins every tie                      [expected: survives: fairness is not data-visible] 
+M20  KILLED    AXI engine: write beats carry no strobes                               [expected: killed] AXI PROTO: WSTRB 0x0, expected all ones (t=0)
+M21  KILLED    AXI engine: write bursts go to the neighbouring line                   [expected: killed] FAIL: load 0x00000040 returned 0xc0de0010, reference 0xa5a52000
+M22  KILLED    AXI engine: read bursts are one beat short                             [expected: killed] AXI PROTO: ARLEN 14, expected 15 (t=0)
+M23  KILLED    AXI engine: WLAST on the second-to-last beat                           [expected: killed] AXI PROTO: WLAST 1 on beat 14 of 16 (t=0)
