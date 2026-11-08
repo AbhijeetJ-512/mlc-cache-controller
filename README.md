@@ -5,6 +5,10 @@ write-through, L2 and L3 are set-associative and write-back with tree-PLRU repla
 interface, and the memory side is AXI4. Synthesis, STA and place and route all target **Sky130HD** through **Yosys, OpenSTA and
 OpenROAD**, driven by one Makefile in the same style as this portfolio's `Full-Adder` flow.
 
+[![Animated block diagram of mlc_cache_top: click to open the interactive explorer](docs/diagrams/architecture_explorer_preview.svg)](https://abhijeetj-512.github.io/mlc-cache-controller/architecture_explorer.html)
+
+*Animated block diagram of the whole hierarchy. [Open the interactive explorer](https://abhijeetj-512.github.io/mlc-cache-controller/architecture_explorer.html) to run requests through it.*
+
 **Where it stands.** The original project is at Phase 8 of 12. Phases 5 and 6, the UVM tier and the formal properties, were put off
 at my request. Every unit is built and passes its Tier-1 tests, the units are wired into one IP, and each unit has been synthesised
 to Sky130HD and timed with OpenSTA (the L3 at 32 KiB, not at its default 256 KiB). In the original project `make check` ran the
@@ -42,6 +46,26 @@ The original is in `Projects/mlc_cache_controller`, and the rest is unchanged. T
 and route are still NOT RUN / NOT MEASURED. Every number here either cites a checked-in tool report or is labelled NOT YET MEASURED
 (a figure I could produce here but haven't yet) or NOT YET RUN (external simulator required) for the UVM tier.
 [`docs/00_project_plan.md`](docs/00_project_plan.md) has the full phase plan and each phase's definition of done.
+
+
+## Interactive architecture explorer
+
+**[Open the interactive explorer](https://abhijeetj-512.github.io/mlc-cache-controller/architecture_explorer.html)** (GitHub Pages). It runs loads, stores and instruction fetches through a cycle-accurate
+JavaScript model of `mlc_cache_top` at its default sizes, one clock at a time, and shows which wires are active, the state of both
+L1 controllers, the arbiter, L2, L3 and the AXI4 engine, and a per-request timeline of where each miss is being served. Nine scenarios
+cover hits, a miss through every level, an L3 hit on the other half of a line, an L1 conflict, a dirty L2 eviction, a dirty L3
+eviction that goes to memory as an AXI4 write burst, slow memory, an AXI4 error response (`mem_err`) and CPU back-pressure. Twelve
+step-by-step walkthroughs and an inspector for every block give file and line references and the key RTL.
+
+How it was checked: the model's CPU-port inputs and memory stall pattern were replayed on the real RTL (and the real
+`sim/axi_mem_model.sv`) under Icarus 12 with `docs/validate/run_replay.sh`. Nine scenarios, 888 cycles, 28,416 compared values (the
+CPU ports, every AXI4 signal, the FSM state of both L1s, L2, L3 and the engine, and the arbiter flags): 0 mismatches
+(`docs/validate/result.txt`). A corrupted expectation and a changed CPU input are both detected. The reset sequence, the memory
+model's other write orderings, an early or missing RLAST, write-channel error responses and AW/W stalls are not covered
+(`docs/validate/README.md`). This is a visualisation aid, not part of the verification evidence below.
+
+The page is `docs/architecture_explorer.html` and also works opened straight from a clone. Its source is in `docs/explorer_src/`, and
+`docs/diagrams/make_explorer_preview.py` regenerates the animated preview from the page.
 
 ---
 
