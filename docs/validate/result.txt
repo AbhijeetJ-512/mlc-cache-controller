@@ -1,0 +1,13 @@
+  both       PASS  66 cycles, 2112 fields compared, 0 mismatches
+  conflict   PASS  70 cycles, 2240 fields compared, 0 mismatches
+  cpubp      PASS  65 cycles, 2080 fields compared, 0 mismatches
+  evl2       PASS  156 cycles, 4992 fields compared, 0 mismatches
+  evl3       PASS  281 cycles, 8992 fields compared, 0 mismatches
+  fetch      PASS  55 cycles, 1760 fields compared, 0 mismatches
+  loadstore  PASS  70 cycles, 2240 fields compared, 0 mismatches
+  memerr     PASS  46 cycles, 1472 fields compared, 0 mismatches
+  slow       PASS  79 cycles, 2528 fields compared, 0 mismatches
+  self-test  PASS (a corrupted expectation is detected)
+  self-test  PASS (a changed CPU input is detected)
+9 scenarios, 888 cycles, 28416 values compared
+replay: ALL MATCH
